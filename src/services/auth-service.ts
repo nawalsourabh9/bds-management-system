@@ -1,65 +1,60 @@
 
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import * as bcrypt from 'bcryptjs';
 import { EmployeeData } from '@/types/auth';
 
+const API_BASE = 'http://localhost:8002';
+
 export const signIn = async (email: string, password: string) => {
-  const { data: employee, error } = await supabase
-    .from('employees')
-    .select('*')
-    .eq('email', email)
-    .single();
+  try {
+    // Use the new login endpoint
+    const response = await fetch(`${API_BASE}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email,
+        password
+      }),
+    });
 
-  if (error) {
-    throw new Error('Invalid email or password');
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Login failed');
+    }
+
+    const data = await response.json();
+    return { employee: data.user };
+  } catch (error: any) {
+    console.error('Login error:', error);
+    throw new Error(error.message || 'Failed to login');
   }
-
-  if (!employee || !employee.password_hash) {
-    throw new Error('Invalid email or password');
-  }
-
-  const passwordMatch = await bcrypt.compare(password, employee.password_hash);
-  if (!passwordMatch) {
-    throw new Error('Invalid email or password');
-  }
-
-  // Check employee status
-  if (employee.status === 'Pending') {
-    throw new Error('Your account is pending admin approval. Please check back later.');
-  }
-
-  return { employee };
 };
 
 export const signUp = async (email: string, password: string, userData: any) => {
   try {
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
-    const { data: employee, error } = await supabase
-      .from('employees')
-      .insert({
+    // Create a new user via our backend API
+    const response = await fetch(`${API_BASE}/api/v1/users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
         email,
-        password_hash: hashedPassword,
-        name: `${userData.first_name} ${userData.last_name}`.trim(),
-        employee_id: `EMP-${Math.floor(100000 + Math.random() * 900000)}`,
-        department: 'Unassigned',
-        position: 'New Employee',
+        first_name: userData.first_name,
+        last_name: userData.last_name,
         role: 'user',
-        status: 'Pending'
-      })
-      .select()
-      .single();
+        status: 'active'
+      }),
+    });
 
-    if (error) {
-      if (error.code === '23505') { // Unique violation
-        throw new Error('An account with this email already exists');
-      }
-      throw error;
+    if (!response.ok) {
+      throw new Error('Failed to create account');
     }
 
+    const result = await response.json();
     toast.success('Account created successfully!');
-    return { employee };
+    return { employee: result.user };
   } catch (error: any) {
     console.error('Error in signup:', error);
     throw error;
