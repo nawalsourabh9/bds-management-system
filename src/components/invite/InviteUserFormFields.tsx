@@ -5,8 +5,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Mail, Phone, User } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
 import { InviteFormData } from "./InviteUserForm";
+
+import { API_BASE, API_ENDPOINTS } from '@/config/api';
 
 interface InviteUserFormFieldsProps {
   formData: InviteFormData;
@@ -36,18 +37,17 @@ export function InviteUserFormFields({ formData, onChange }: InviteUserFormField
       try {
         setLoadingDepartments(true);
         
-        const { data, error } = await supabase
-          .from('departments')
-          .select('id, name')
-          .order('name');
+        const response = await fetch(`${API_BASE}/api/v1/departments`);
         
-        if (error) {
-          console.error("Error fetching departments:", error);
-          throw error;
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
         
-        console.log("Fetched departments:", data);
-        setDepartments(data || []);
+        const data = await response.json();
+        const departmentsData = data.departments || [];
+        
+        console.log("Fetched departments:", departmentsData);
+        setDepartments(departmentsData);
       } catch (error: any) {
         console.error("Error fetching departments:", error);
         toast.error(`Failed to load departments: ${error.message}`);
@@ -65,18 +65,26 @@ export function InviteUserFormFields({ formData, onChange }: InviteUserFormField
       try {
         setLoadingSupervisors(true);
         
-        const { data, error } = await supabase
-          .from('team_members')
-          .select('id, name, position')
-          .order('name');
+        const response = await fetch(`${API_BASE}/api/v1/users`);
         
-        if (error) {
-          console.error("Error fetching supervisors:", error);
-          throw error;
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
         
-        console.log("Fetched potential supervisors:", data);
-        setSupervisors(data || []);
+        const data = await response.json();
+        const usersData = data.users || [];
+        
+        // Map users to supervisors format
+        const supervisorsData = usersData
+          .filter((user: any) => user.is_active)
+          .map((user: any) => ({
+            id: user.id,
+            name: `${user.first_name} ${user.last_name}`,
+            position: user.role
+          }));
+        
+        console.log("Fetched potential supervisors:", supervisorsData);
+        setSupervisors(supervisorsData);
       } catch (error: any) {
         console.error("Error fetching supervisors:", error);
         toast.error(`Failed to load supervisors: ${error.message}`);

@@ -5,14 +5,16 @@ import { toast } from "@/hooks/use-toast";
 import { EmployeeList } from "./components/EmployeeList";
 import { EditEmployeeDialog } from "./components/EditEmployeeDialog";
 import { DeleteEmployeeDialog } from "./components/DeleteEmployeeDialog";
+import { CreateUserDialog } from "./components/CreateUserDialog";
 import { UsersHeader } from "./components/UsersHeader";
 import { useEmployees } from "./hooks/useEmployees";
 import { Employee } from "./types";
 
 const Users = () => {
-  const { employees, loading, updateEmployee, deleteEmployee } = useEmployees();
+  const { employees, loading, updateEmployee, deleteEmployee, refetch } = useEmployees();
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [employeeToDelete, setEmployeeToDelete] = useState<string | null>(null); // Changed from number to string
   const [searchTerm, setSearchTerm] = useState("");
@@ -71,7 +73,11 @@ const Users = () => {
       </div>
       
       <Card className="border-border">
-        <UsersHeader searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
+        <UsersHeader 
+          searchTerm={searchTerm} 
+          setSearchTerm={setSearchTerm}
+          onCreateUser={() => setIsCreateDialogOpen(true)}
+        />
         <CardContent className="p-0">
           <EmployeeList 
             employees={filteredEmployees}
@@ -94,6 +100,12 @@ const Users = () => {
         isOpen={isDeleteDialogOpen}
         setIsOpen={setIsDeleteDialogOpen}
         onConfirm={handleDeleteEmployee}
+      />
+
+      <CreateUserDialog
+        isOpen={isCreateDialogOpen}
+        setIsOpen={setIsCreateDialogOpen}
+        onUserCreated={refetch}
       />
     </div>
   );

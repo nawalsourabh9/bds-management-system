@@ -1,5 +1,14 @@
 # BDS Management System - Git Ignore File
 
+# Azure Infrastructure Documentation
+azure-infra-docs.md
+
+# ===== DEPLOYMENT CONFIGURATION =====
+deployment-config.env
+.env.deployment
+.env.production
+.env.staging
+
 # ===== PYTHON BACKEND =====
 
 # Virtual environments
@@ -119,6 +128,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.env.*
 
 # Spyder project settings
 .spyderproject

@@ -13,7 +13,7 @@ export const useAuth = () => {
   
   // Ensure we're properly checking if the user has admin role - using case insensitive comparison
   const employee = context.user as EmployeeData | null;
-  const isAdmin = employee?.role?.toLowerCase() === 'admin';
+  const isAdmin = employee?.role?.toLowerCase() === 'admin' || employee?.role?.toLowerCase() === 'superadmin';
   
   console.log("useAuth hook - employee:", employee);
   console.log("useAuth hook - role:", employee?.role);

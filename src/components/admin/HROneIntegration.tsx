@@ -8,7 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Loader2, Download, Upload, RefreshCw, Settings } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { fastapiService } from "@/services/fastapi-service";
 
 export function HROneIntegration() {
   const [isImporting, setIsImporting] = useState(false);
@@ -28,8 +28,8 @@ export function HROneIntegration() {
       setIsImporting(true);
       
       // Import employees
-      const employeesResponse = await supabase.functions.invoke("hrone-integration", {
-        body: { action: "import_employees" }
+      const employeesResponse = await fastapiService.hroneIntegration({
+        action: "import_employees"
       });
       
       if (employeesResponse.error) {
@@ -37,8 +37,8 @@ export function HROneIntegration() {
       }
       
       // Import departments
-      const departmentsResponse = await supabase.functions.invoke("hrone-integration", {
-        body: { action: "import_departments" }
+      const departmentsResponse = await fastapiService.hroneIntegration({
+        action: "import_departments"
       });
       
       if (departmentsResponse.error) {
@@ -63,8 +63,8 @@ export function HROneIntegration() {
       setIsExporting(true);
       
       // Export employees
-      const employeesResponse = await supabase.functions.invoke("hrone-integration", {
-        body: { action: "export_employees" }
+      const employeesResponse = await fastapiService.hroneIntegration({
+        action: "export_employees"
       });
       
       if (employeesResponse.error) {
@@ -72,8 +72,8 @@ export function HROneIntegration() {
       }
       
       // Export departments
-      const departmentsResponse = await supabase.functions.invoke("hrone-integration", {
-        body: { action: "export_departments" }
+      const departmentsResponse = await fastapiService.hroneIntegration({
+        action: "export_departments"
       });
       
       if (departmentsResponse.error) {
@@ -94,8 +94,8 @@ export function HROneIntegration() {
     try {
       setIsSyncing(true);
       
-      const response = await supabase.functions.invoke("hrone-integration", {
-        body: { action: "sync" }
+      const response = await fastapiService.hroneIntegration({
+        action: "sync"
       });
       
       if (response.error) {

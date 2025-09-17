@@ -1,0 +1,55 @@
+
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: bds_backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://taklu:0071@host.docker.internal:5432/bds_management_system
+      - REDIS_URL=redis://localhost:6379/0
+      - SECRET_KEY=your-super-secret-key-change-in-production
+      - STORAGE_TYPE=local
+      - UPLOAD_DIR=./uploads
+      - LOG_LEVEL=INFO
+      - DEFAULT_TIMEZONE=Asia/Kolkata
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/logs:/app/logs
+    networks:
+      - bds_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: bds_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - bds_network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  bds_network:
+    driver: bridge

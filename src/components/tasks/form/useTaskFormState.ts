@@ -9,7 +9,7 @@ export const useTaskFormState = (initialData: Partial<Task>) => {
   const [title, setTitle] = useState(initialData?.title || "");
   const [description, setDescription] = useState(initialData?.description || "");
   const [department, setDepartment] = useState(initialData?.department || "Quality");
-  const [priority, setPriority] = useState<"low" | "medium" | "high">(initialData?.priority || "medium");
+  const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent" | "critical" | "emergency">(initialData?.priority || "medium");
   const [dueDate, setDueDate] = useState(formatDateForInput(initialData?.dueDate));
   const [assignee, setAssignee] = useState(initialData?.assignee || "unassigned");
   const [isRecurring, setIsRecurring] = useState(initialData?.isRecurring || false);

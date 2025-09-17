@@ -1,0 +1,116 @@
+{
+  "id": "/subscriptions/6bd9c13c-549e-4230-b43e-019f4d6959fb/resourceGroups/bds-qms/providers/Microsoft.App/containerapps/bds-backend",
+  "identity": {
+    "principalId": "4b47a24a-40c0-4a57-943d-4655983758cf",
+    "tenantId": "aa10dfda-9bd3-4c42-b5a5-5449d10c7355",
+    "type": "SystemAssigned"
+  },
+  "location": "Central India",
+  "name": "bds-backend",
+  "properties": {
+    "configuration": {
+      "activeRevisionsMode": "Single",
+      "dapr": null,
+      "identitySettings": [],
+      "ingress": {
+        "additionalPortMappings": null,
+        "allowInsecure": false,
+        "clientCertificateMode": null,
+        "corsPolicy": null,
+        "customDomains": null,
+        "exposedPort": 0,
+        "external": true,
+        "fqdn": "bds-backend.livelyrock-7c3eeeaa.centralindia.azurecontainerapps.io",
+        "ipSecurityRestrictions": null,
+        "stickySessions": null,
+        "targetPort": 80,
+        "targetPortHttpScheme": null,
+        "traffic": [
+          {
+            "latestRevision": true,
+            "weight": 100
+          }
+        ],
+        "transport": "Auto"
+      },
+      "maxInactiveRevisions": 100,
+      "registries": null,
+      "revisionTransitionThreshold": null,
+      "runtime": null,
+      "secrets": null,
+      "service": null,
+      "targetLabel": ""
+    },
+    "customDomainVerificationId": "78651C3366B5ED1CFBF318588AF38C921C7B8721689581CA794A9B1D08A970A0",
+    "delegatedIdentities": [],
+    "environmentId": "/subscriptions/6bd9c13c-549e-4230-b43e-019f4d6959fb/resourceGroups/bds-qms/providers/Microsoft.App/managedEnvironments/bds-aca-env",
+    "eventStreamEndpoint": "https://centralindia.azurecontainerapps.dev/subscriptions/6bd9c13c-549e-4230-b43e-019f4d6959fb/resourceGroups/bds-qms/containerApps/bds-backend/eventstream",
+    "latestReadyRevisionName": "bds-backend--ysvru0u",
+    "latestRevisionFqdn": "bds-backend--ysvru0u.livelyrock-7c3eeeaa.centralindia.azurecontainerapps.io",
+    "latestRevisionName": "bds-backend--ysvru0u",
+    "managedEnvironmentId": "/subscriptions/6bd9c13c-549e-4230-b43e-019f4d6959fb/resourceGroups/bds-qms/providers/Microsoft.App/managedEnvironments/bds-aca-env",
+    "outboundIpAddresses": [
+      "20.207.113.244",
+      "20.207.114.82",
+      "20.207.113.247",
+      "20.207.113.242",
+      "4.188.105.82",
+      "4.213.216.206",
+      "4.188.110.244",
+      "4.186.33.69",
+      "4.186.36.246",
+      "4.186.37.141",
+      "20.204.252.66",
+      "20.204.255.44",
+      "20.207.112.119",
+      "20.204.254.22",
+      "4.213.194.124",
+      "4.213.194.130",
+      "4.213.194.85",
+      "4.213.194.149",
+      "4.213.194.114",
+      "4.213.194.154",
+      "4.187.232.136"
+    ],
+    "patchingMode": "Automatic",
+    "provisioningState": "Succeeded",
+    "runningStatus": "Running",
+    "template": {
+      "containers": [
+        {
+          "image": "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest",
+          "imageType": "ContainerImage",
+          "name": "bds-backend",
+          "resources": {
+            "cpu": 0.5,
+            "ephemeralStorage": "2Gi",
+            "memory": "1Gi"
+          }
+        }
+      ],
+      "initContainers": null,
+      "revisionSuffix": "",
+      "scale": {
+        "cooldownPeriod": 300,
+        "maxReplicas": 10,
+        "minReplicas": null,
+        "pollingInterval": 30,
+        "rules": null
+      },
+      "serviceBinds": null,
+      "terminationGracePeriodSeconds": null,
+      "volumes": null
+    },
+    "workloadProfileName": "Consumption"
+  },
+  "resourceGroup": "bds-qms",
+  "systemData": {
+    "createdAt": "2025-09-17T10:51:38.8325734",
+    "createdBy": "sandeep.srv@outlook.com",
+    "createdByType": "User",
+    "lastModifiedAt": "2025-09-17T13:30:14.0858787",
+    "lastModifiedBy": "sandeep.srv@outlook.com",
+    "lastModifiedByType": "User"
+  },
+  "type": "Microsoft.App/containerApps"
+}

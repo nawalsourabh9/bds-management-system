@@ -9,6 +9,7 @@ import {
   DialogTitle 
 } from "@/components/ui/dialog";
 import StatusUpdateDialog from "./StatusUpdateDialog";
+import { useTaskUpdate } from "@/hooks/task-operations/use-task-update";
 
 interface TaskDialogsProps {
   isCreateDialogOpen: boolean;
@@ -35,6 +36,7 @@ const TaskDialogs: React.FC<TaskDialogsProps> = ({
   onCreateTask,
   onUpdateTask
 }) => {
+  const { handleUpdateTask } = useTaskUpdate();
   return (
     <>
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
@@ -51,16 +53,35 @@ const TaskDialogs: React.FC<TaskDialogsProps> = ({
           <DialogHeader>
             <DialogTitle>Edit Task</DialogTitle>
           </DialogHeader>
-          <TaskForm onSubmit={onUpdateTask} initialData={currentEditTask || {}} />
+          <TaskForm onSubmit={(task) => {
+            // Extract task ID and updates for the useTaskUpdate hook
+            const { id, ...updates } = task;
+            if (id) {
+              handleUpdateTask(id, updates);
+            }
+          }} initialData={currentEditTask || {}} />
         </DialogContent>
       </Dialog>
 
-      <StatusUpdateDialog
-        task={currentStatusTask}
-        isOpen={isStatusUpdateDialogOpen}
-        onClose={() => setIsStatusUpdateDialogOpen(false)}
-        onUpdateTask={onUpdateTask}
-      />
+      {currentStatusTask && (
+        <StatusUpdateDialog
+          taskId={currentStatusTask.id}
+          currentStatus={currentStatusTask.status}
+          currentPriority={currentStatusTask.priority}
+          onStatusUpdate={async (taskId, newStatus, newPriority, comments) => {
+            // Use the correct handleUpdateTask function with taskId and updates
+            await handleUpdateTask(taskId, {
+              status: newStatus,
+              priority: newPriority,
+              comments: comments
+            });
+            setIsStatusUpdateDialogOpen(false);
+          }}
+          open={isStatusUpdateDialogOpen}
+          onOpenChange={setIsStatusUpdateDialogOpen}
+          trigger={null}
+        />
+      )}
     </>
   );
 };

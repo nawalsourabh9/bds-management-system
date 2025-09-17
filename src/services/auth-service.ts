@@ -2,7 +2,7 @@
 import { toast } from 'sonner';
 import { EmployeeData } from '@/types/auth';
 
-const API_BASE = 'http://localhost:8002';
+import { API_BASE, API_ENDPOINTS } from '@/config/api';
 
 export const signIn = async (email: string, password: string) => {
   try {
@@ -24,6 +24,14 @@ export const signIn = async (email: string, password: string) => {
     }
 
     const data = await response.json();
+    
+    // Store session data in localStorage
+    localStorage.setItem('employee', JSON.stringify(data.user));
+    localStorage.setItem('session', JSON.stringify({ 
+      access_token: data.access_token || 'local-session',
+      user: data.user 
+    }));
+    
     return { employee: data.user };
   } catch (error: any) {
     console.error('Login error:', error);
@@ -64,6 +72,7 @@ export const signUp = async (email: string, password: string, userData: any) => 
 export const signOut = async () => {
   // Clear any session data or local storage if needed
   localStorage.removeItem('employee');
+  localStorage.removeItem('session');
   toast.success('Signed out successfully');
 };
 
@@ -75,6 +84,7 @@ export const resetPassword = async (email: string): Promise<void> => {
 export const updatePassword = async (password: string): Promise<void> => {
   console.warn('updatePassword not implemented');
 };
+
 
 export const updateProfile = async (data: any, userId: string): Promise<void> => {
   console.warn('updateProfile not implemented');

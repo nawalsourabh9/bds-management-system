@@ -81,7 +81,12 @@ const TaskTableRow: React.FC<TaskTableRowProps> = ({
                   {task.assigneeDetails.initials}
                 </AvatarFallback>
               </Avatar>
-              <span className="text-sm">{task.assigneeDetails.name}</span>
+              <div className="flex flex-col">
+                <span className="text-sm font-medium">{task.assigneeDetails.name}</span>
+                {task.assigneeDetails.employeeId && (
+                  <span className="text-xs text-muted-foreground">{task.assigneeDetails.employeeId}</span>
+                )}
+              </div>
             </>
           ) : (
             <span className="text-sm text-muted-foreground">Unassigned</span>

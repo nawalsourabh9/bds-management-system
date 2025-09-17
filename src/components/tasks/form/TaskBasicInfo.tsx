@@ -17,35 +17,45 @@ export const TaskBasicInfo: React.FC<TaskBasicInfoProps> = ({
   setDescription
 }) => {
   return (
-    <>
-      <div>
-        <label htmlFor="title" className="block text-sm font-medium mb-1">
-          Task Title <span className="text-destructive">*</span>
+    <div className="space-y-6">
+      <div className="space-y-3">
+        <label htmlFor="title" className="text-sm font-medium text-gray-700">
+          Task Title <span className="text-red-500">*</span>
         </label>
         <Input 
           id="title" 
           value={title} 
           onChange={e => setTitle(e.target.value)} 
           required 
-          placeholder="Enter task title" 
-          className="border border-input rounded-md" 
+          placeholder="Enter a descriptive task title" 
+          className="apple-input h-12 text-base" 
         />
+        {title && (
+          <div className="text-sm text-gray-500">
+            {title.length} characters
+          </div>
+        )}
       </div>
 
-      <div>
-        <label htmlFor="description" className="block text-sm font-medium mb-1">
-          Description <span className="text-destructive">*</span>
+      <div className="space-y-3">
+        <label htmlFor="description" className="text-sm font-medium text-gray-700">
+          Description <span className="text-red-500">*</span>
         </label>
         <Textarea 
           id="description" 
           value={description} 
           onChange={e => setDescription(e.target.value)} 
           required 
-          placeholder="Enter task description" 
-          rows={2} 
-          className="border border-input rounded-md" 
+          placeholder="Provide detailed description of the task, requirements, and expected outcomes" 
+          rows={4} 
+          className="apple-input resize-none" 
         />
+        {description && (
+          <div className="text-sm text-gray-500">
+            {description.length} characters
+          </div>
+        )}
       </div>
-    </>
+    </div>
   );
 };

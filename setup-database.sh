@@ -1,174 +1,399 @@
 #!/bin/bash
 
-echo "🗄️ Setting up Database..."
+# Database Setup Script for BDS Management System
+# This script creates a separate schema for BDS tables in the Nordic database
 
-# Create database initialization script
-mkdir -p database/init
+set -e
 
-cat > database/init/01-init.sql << 'EOF'
--- BDS Management System Database Initialization
+# Load configuration
+if [ -f "deployment-config.env" ]; then
+    source deployment-config.env
+else
+    echo "Error: deployment-config.env file not found"
+    exit 1
+fi
 
--- Create extensions
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
 
--- Create users table
-CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+# Function to print colored output
+print_status() {
+    echo -e "${GREEN}[INFO]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+print_header() {
+    echo -e "${BLUE}================================${NC}"
+    echo -e "${BLUE}$1${NC}"
+    echo -e "${BLUE}================================${NC}"
+}
+
+# Function to get database password from Key Vault
+get_db_password() {
+    print_status "Getting database password from Key Vault..."
+    DB_PASSWORD=$(az keyvault secret show --vault-name $KEYVAULT_NAME --name "DBPASSWORD" --query value -o tsv)
+    if [ -z "$DB_PASSWORD" ]; then
+        print_error "Database password not found in Key Vault"
+        exit 1
+    fi
+    print_status "Database password retrieved successfully"
+}
+
+# Function to create database schema and tables
+create_database_schema() {
+    print_header "Creating BDS Database Schema"
+    
+    # Create SQL file for schema creation
+    cat > bds_schema.sql << 'EOF'
+-- BDS Management System Database Schema
+-- This schema is separate from the Nordic application tables
+
+-- Create BDS schema
+CREATE SCHEMA IF NOT EXISTS bds;
+
+-- Set search path to include BDS schema
+SET search_path TO bds, public;
+
+-- Create BDS users table (separate from Nordic users)
+CREATE TABLE IF NOT EXISTS bds.users (
+    id SERIAL PRIMARY KEY,
     email VARCHAR(255) UNIQUE NOT NULL,
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    first_name VARCHAR(100),
-    last_name VARCHAR(100),
-    avatar_url VARCHAR(500),
-    timezone VARCHAR(50) DEFAULT 'Asia/Kolkata',
-    language VARCHAR(10) DEFAULT 'en',
-    theme VARCHAR(20) DEFAULT 'light',
-    notification_preferences JSONB DEFAULT '{}',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    last_login TIMESTAMP WITH TIME ZONE
+    role VARCHAR(50) DEFAULT 'user',
+    department_id INTEGER,
+    is_active BOOLEAN DEFAULT true,
+    email_verified BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create departments table
-CREATE TABLE departments (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+-- Create BDS departments table
+CREATE TABLE IF NOT EXISTS bds.departments (
+    id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     description TEXT,
-    external_id VARCHAR(100),
-    parent_id UUID REFERENCES departments(id),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    manager_id INTEGER REFERENCES bds.users(id),
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create tasks table
-CREATE TABLE tasks (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+-- Create BDS tasks table
+CREATE TABLE IF NOT EXISTS bds.tasks (
+    id SERIAL PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
     description TEXT,
-    status VARCHAR(20) DEFAULT 'not-started',
+    status VARCHAR(50) DEFAULT 'pending',
     priority VARCHAR(20) DEFAULT 'medium',
-    progress INTEGER DEFAULT 0,
-    estimated_hours DECIMAL(5,2),
-    actual_hours DECIMAL(5,2),
-    start_date TIMESTAMP WITH TIME ZONE,
-    due_date TIMESTAMP WITH TIME ZONE,
-    completed_date TIMESTAMP WITH TIME ZONE,
-    assignee_id UUID REFERENCES users(id),
-    created_by UUID REFERENCES users(id),
-    department_id UUID REFERENCES departments(id),
-    template_id UUID,
-    parent_task_id UUID REFERENCES tasks(id),
+    department_id INTEGER REFERENCES bds.departments(id),
+    assignee_id INTEGER REFERENCES bds.users(id),
+    created_by INTEGER REFERENCES bds.users(id),
+    start_date DATE,
+    due_date DATE,
+    completed_date TIMESTAMP,
+    is_recurring BOOLEAN DEFAULT false,
+    recurring_frequency VARCHAR(50),
+    is_customer_related BOOLEAN DEFAULT false,
+    customer_name VARCHAR(255),
+    customer_email VARCHAR(255),
+    attachments_required VARCHAR(50) DEFAULT 'none',
     tags TEXT[],
-    attachments JSONB DEFAULT '[]',
-    metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create calendar_events table
-CREATE TABLE calendar_events (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+-- Create BDS task_attachments table
+CREATE TABLE IF NOT EXISTS bds.task_attachments (
+    id SERIAL PRIMARY KEY,
+    task_id INTEGER REFERENCES bds.tasks(id) ON DELETE CASCADE,
+    file_name VARCHAR(255) NOT NULL,
+    file_path VARCHAR(500) NOT NULL,
+    file_size INTEGER,
+    file_type VARCHAR(100),
+    uploaded_by INTEGER REFERENCES bds.users(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create BDS task_comments table
+CREATE TABLE IF NOT EXISTS bds.task_comments (
+    id SERIAL PRIMARY KEY,
+    task_id INTEGER REFERENCES bds.tasks(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES bds.users(id),
+    comment TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create BDS task_history table
+CREATE TABLE IF NOT EXISTS bds.task_history (
+    id SERIAL PRIMARY KEY,
+    task_id INTEGER REFERENCES bds.tasks(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES bds.users(id),
+    action VARCHAR(100) NOT NULL,
+    old_value TEXT,
+    new_value TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create BDS documents table
+CREATE TABLE IF NOT EXISTS bds.documents (
+    id SERIAL PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
     description TEXT,
-    event_type VARCHAR(50) NOT NULL,
-    start_time TIMESTAMP WITH TIME ZONE NOT NULL,
-    end_time TIMESTAMP WITH TIME ZONE,
-    all_day BOOLEAN DEFAULT FALSE,
-    location VARCHAR(255),
-    attendees JSONB DEFAULT '[]',
-    related_task_id UUID REFERENCES tasks(id),
-    created_by UUID REFERENCES users(id),
-    is_recurring BOOLEAN DEFAULT FALSE,
-    recurrence_pattern JSONB,
-    color VARCHAR(7) DEFAULT '#FF6B35',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- Create task_templates table
-CREATE TABLE task_templates (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name VARCHAR(255) NOT NULL,
-    description TEXT,
-    category VARCHAR(100),
-    estimated_hours DECIMAL(5,2),
-    priority VARCHAR(20) DEFAULT 'medium',
-    department_id UUID REFERENCES departments(id),
-    assignee_id UUID REFERENCES users(id),
-    checklist JSONB DEFAULT '[]',
-    attachments_required BOOLEAN DEFAULT FALSE,
-    approval_required BOOLEAN DEFAULT FALSE,
-    created_by UUID REFERENCES users(id),
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- Create documents table
-CREATE TABLE documents (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    title VARCHAR(255) NOT NULL,
-    description TEXT,
-    file_name VARCHAR(255),
-    file_path VARCHAR(500),
-    file_size BIGINT,
-    file_type VARCHAR(50),
+    file_name VARCHAR(255) NOT NULL,
+    file_path VARCHAR(500) NOT NULL,
+    file_size INTEGER,
+    file_type VARCHAR(100),
+    document_type VARCHAR(100),
+    status VARCHAR(50) DEFAULT 'draft',
+    uploaded_by INTEGER REFERENCES bds.users(id),
+    approved_by INTEGER REFERENCES bds.users(id),
+    approved_at TIMESTAMP,
     version VARCHAR(20) DEFAULT '1.0',
-    document_type VARCHAR(50),
-    uploaded_by UUID REFERENCES users(id),
-    department_id UUID REFERENCES departments(id),
-    status VARCHAR(20) DEFAULT 'draft',
-    approval_status VARCHAR(20) DEFAULT 'pending',
     tags TEXT[],
-    metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create indexes for performance
-CREATE INDEX idx_tasks_assignee_id ON tasks(assignee_id);
-CREATE INDEX idx_tasks_status ON tasks(status);
-CREATE INDEX idx_tasks_due_date ON tasks(due_date);
-CREATE INDEX idx_tasks_department_id ON tasks(department_id);
-CREATE INDEX idx_calendar_events_start_time ON calendar_events(start_time);
-CREATE INDEX idx_calendar_events_created_by ON calendar_events(created_by);
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_documents_uploaded_by ON documents(uploaded_by);
-CREATE INDEX idx_documents_status ON documents(status);
+-- Create BDS audits table
+CREATE TABLE IF NOT EXISTS bds.audits (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    audit_type VARCHAR(100),
+    department_id INTEGER REFERENCES bds.departments(id),
+    auditor_id INTEGER REFERENCES bds.users(id),
+    audit_date DATE,
+    status VARCHAR(50) DEFAULT 'planned',
+    findings TEXT,
+    recommendations TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
--- Insert default departments
-INSERT INTO departments (name, description) VALUES
-('Quality', 'Quality Management Department'),
-('Production', 'Production Department'),
-('Engineering', 'Engineering Department'),
-('HR', 'Human Resources Department'),
-('Finance', 'Finance Department'),
-('IT', 'Information Technology Department');
+-- Create BDS non_conformances table
+CREATE TABLE IF NOT EXISTS bds.non_conformances (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    department_id INTEGER REFERENCES bds.departments(id),
+    reported_by INTEGER REFERENCES bds.users(id),
+    assigned_to INTEGER REFERENCES bds.users(id),
+    severity VARCHAR(20) DEFAULT 'medium',
+    status VARCHAR(50) DEFAULT 'open',
+    due_date DATE,
+    resolved_date TIMESTAMP,
+    resolution TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
--- Insert default admin user (password: admin123)
-INSERT INTO users (email, password_hash, first_name, last_name) VALUES
-('admin@bds.com', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj4J/HS.i8mG', 'Admin', 'User');
+-- Create indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_bds_users_email ON bds.users(email);
+CREATE INDEX IF NOT EXISTS idx_bds_tasks_status ON bds.tasks(status);
+CREATE INDEX IF NOT EXISTS idx_bds_tasks_assignee ON bds.tasks(assignee_id);
+CREATE INDEX IF NOT EXISTS idx_bds_tasks_department ON bds.tasks(department_id);
+CREATE INDEX IF NOT EXISTS idx_bds_tasks_due_date ON bds.tasks(due_date);
+CREATE INDEX IF NOT EXISTS idx_bds_documents_status ON bds.documents(status);
+CREATE INDEX IF NOT EXISTS idx_bds_audits_status ON bds.audits(status);
+CREATE INDEX IF NOT EXISTS idx_bds_non_conformances_status ON bds.non_conformances(status);
 
--- Create triggers for updated_at
-CREATE OR REPLACE FUNCTION update_updated_at_column()
+-- Create updated_at trigger function
+CREATE OR REPLACE FUNCTION bds.update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.updated_at = NOW();
+    NEW.updated_at = CURRENT_TIMESTAMP;
     RETURN NEW;
 END;
 $$ language 'plpgsql';
 
-CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_tasks_updated_at BEFORE UPDATE ON tasks FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_calendar_events_updated_at BEFORE UPDATE ON calendar_events FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_task_templates_updated_at BEFORE UPDATE ON task_templates FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_documents_updated_at BEFORE UPDATE ON documents FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- Create triggers for updated_at
+CREATE TRIGGER update_bds_users_updated_at BEFORE UPDATE ON bds.users FOR EACH ROW EXECUTE FUNCTION bds.update_updated_at_column();
+CREATE TRIGGER update_bds_departments_updated_at BEFORE UPDATE ON bds.departments FOR EACH ROW EXECUTE FUNCTION bds.update_updated_at_column();
+CREATE TRIGGER update_bds_tasks_updated_at BEFORE UPDATE ON bds.tasks FOR EACH ROW EXECUTE FUNCTION bds.update_updated_at_column();
+CREATE TRIGGER update_bds_documents_updated_at BEFORE UPDATE ON bds.documents FOR EACH ROW EXECUTE FUNCTION bds.update_updated_at_column();
+CREATE TRIGGER update_bds_audits_updated_at BEFORE UPDATE ON bds.audits FOR EACH ROW EXECUTE FUNCTION bds.update_updated_at_column();
+CREATE TRIGGER update_bds_non_conformances_updated_at BEFORE UPDATE ON bds.non_conformances FOR EACH ROW EXECUTE FUNCTION bds.update_updated_at_column();
+
+-- Insert default department
+INSERT INTO bds.departments (name, description) VALUES 
+('General', 'General department for all users')
+ON CONFLICT DO NOTHING;
+
+-- Grant permissions to the database user
+GRANT USAGE ON SCHEMA bds TO nodicuser;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA bds TO nodicuser;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA bds TO nodicuser;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA bds TO nodicuser;
+
+-- Set default privileges for future tables
+ALTER DEFAULT PRIVILEGES IN SCHEMA bds GRANT ALL ON TABLES TO nodicuser;
+ALTER DEFAULT PRIVILEGES IN SCHEMA bds GRANT ALL ON SEQUENCES TO nodicuser;
+ALTER DEFAULT PRIVILEGES IN SCHEMA bds GRANT EXECUTE ON FUNCTIONS TO nodicuser;
 EOF
 
-# Run the initialization script
-echo "Running database initialization..."
-psql -U bds_user -d bds_management -f database/init/01-init.sql
+    print_status "SQL schema file created: bds_schema.sql"
+}
 
-echo "✅ Database setup completed"
-echo "Default admin credentials:"
-echo "Email: admin@bds.com"
-echo "Password: admin123"
+# Function to execute database setup
+execute_database_setup() {
+    print_header "Executing Database Setup"
+    
+    # Get database password
+    get_db_password
+    
+    # Create connection string
+    DATABASE_URL="postgresql://nodicuser:${DB_PASSWORD}@${NORDIC_DB_HOST}:5432/${NORDIC_DB_NAME}?sslmode=require"
+    
+    print_status "Connecting to database: ${NORDIC_DB_HOST}"
+    print_status "Database: ${NORDIC_DB_NAME}"
+    print_status "User: nodicuser"
+    
+    # Execute the schema creation
+    print_status "Creating BDS schema and tables..."
+    PGPASSWORD="${DB_PASSWORD}" psql -h "${NORDIC_DB_HOST}" -U nodicuser -d "${NORDIC_DB_NAME}" -f bds_schema.sql
+    
+    print_status "Database schema created successfully!"
+}
+
+# Function to verify database setup
+verify_database_setup() {
+    print_header "Verifying Database Setup"
+    
+    # Get database password
+    get_db_password
+    
+    # Create verification SQL
+    cat > verify_schema.sql << 'EOF'
+-- Verify BDS schema and tables
+\dt bds.*
+
+-- Check if tables exist
+SELECT 
+    table_name,
+    table_type
+FROM information_schema.tables 
+WHERE table_schema = 'bds'
+ORDER BY table_name;
+
+-- Check table counts
+SELECT 'users' as table_name, COUNT(*) as count FROM bds.users
+UNION ALL
+SELECT 'departments', COUNT(*) FROM bds.departments
+UNION ALL
+SELECT 'tasks', COUNT(*) FROM bds.tasks
+UNION ALL
+SELECT 'documents', COUNT(*) FROM bds.documents
+UNION ALL
+SELECT 'audits', COUNT(*) FROM bds.audits
+UNION ALL
+SELECT 'non_conformances', COUNT(*) FROM bds.non_conformances;
+EOF
+
+    print_status "Verifying schema and tables..."
+    PGPASSWORD="${DB_PASSWORD}" psql -h "${NORDIC_DB_HOST}" -U nodicuser -d "${NORDIC_DB_NAME}" -f verify_schema.sql
+    
+    print_status "Database verification completed!"
+}
+
+# Function to update backend configuration
+update_backend_config() {
+    print_header "Updating Backend Configuration"
+    
+    # Get database password
+    get_db_password
+    
+    # Create the database URL
+    DATABASE_URL="postgresql://nodicuser:${DB_PASSWORD}@${NORDIC_DB_HOST}:5432/${NORDIC_DB_NAME}?sslmode=require&options=-csearch_path%3Dbds,public"
+    
+    print_status "Updating backend environment variables..."
+    
+    # Update backend container app with new database URL
+    az containerapp update \
+        --name $CONTAINER_APP_NAME_BACKEND \
+        --resource-group $RESOURCE_GROUP \
+        --set-env-vars \
+        "DATABASE_URL=$DATABASE_URL"
+    
+    print_status "Backend configuration updated!"
+}
+
+# Function to show setup summary
+show_summary() {
+    print_header "Database Setup Summary"
+    
+    echo "Database Configuration:"
+    echo "  Host: $NORDIC_DB_HOST"
+    echo "  Database: $NORDIC_DB_NAME"
+    echo "  User: nodicuser"
+    echo "  Schema: bds"
+    echo ""
+    echo "Tables Created:"
+    echo "  ✅ bds.users - User management"
+    echo "  ✅ bds.departments - Department management"
+    echo "  ✅ bds.tasks - Task management"
+    echo "  ✅ bds.task_attachments - File attachments"
+    echo "  ✅ bds.task_comments - Task comments"
+    echo "  ✅ bds.task_history - Task history"
+    echo "  ✅ bds.documents - Document management"
+    echo "  ✅ bds.audits - Audit management"
+    echo "  ✅ bds.non_conformances - Non-conformance tracking"
+    echo ""
+    echo "Schema Separation:"
+    echo "  • BDS tables are in 'bds' schema"
+    echo "  • Nordic tables remain in 'public' schema"
+    echo "  • No conflicts between applications"
+    echo ""
+    echo "Backend Configuration:"
+    echo "  • Updated with new DATABASE_URL"
+    echo "  • Search path includes 'bds' schema first"
+    echo "  • SSL connection enabled"
+}
+
+# Main function
+main() {
+    print_header "BDS Database Setup"
+    
+    # Check prerequisites
+    print_status "Checking prerequisites..."
+    if ! command -v psql &> /dev/null; then
+        print_error "PostgreSQL client (psql) is not installed"
+        print_status "Install with: brew install postgresql"
+        exit 1
+    fi
+    
+    # Create database schema
+    create_database_schema
+    
+    # Execute database setup
+    execute_database_setup
+    
+    # Verify setup
+    verify_database_setup
+    
+    # Update backend configuration
+    update_backend_config
+    
+    # Show summary
+    show_summary
+    
+    print_header "Database Setup Complete!"
+    print_status "BDS application now has its own schema in the Nordic database"
+    print_status "No conflicts with existing Nordic tables"
+    print_status "Backend is configured to use the new schema"
+}
+
+# Call main function
+main "$@"

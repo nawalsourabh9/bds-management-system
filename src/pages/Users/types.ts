@@ -29,21 +29,14 @@ export type Employee = {
 };
 
 export const departmentOptions = [
-  "Executive", 
-  "Quality", 
+  "Executive Office",
+  "Quality Assurance", 
   "Production", 
-  "Engineering", 
-  "HR", 
-  "Finance", 
-  "IT", 
-  "Sales", 
-  "Marketing", 
-  "Business Development",
-  "Quality Assurance",
-  "Quality Control",
   "Research & Development",
-  "Customer Service",
-  "Legal"
+  "Supply Chain",
+  "Human Resources", 
+  "Finance", 
+  "IT & Systems"
 ];
 
-export const roleOptions = ["Admin", "Manager", "User", "Viewer"];
+export const roleOptions = ["admin", "manager", "supervisor", "user"];

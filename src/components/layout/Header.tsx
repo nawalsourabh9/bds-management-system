@@ -11,7 +11,6 @@ import { useNotifications } from "@/hooks/use-notifications";
 import { NotificationsList } from "@/components/notifications/NotificationsList";
 import { useAuth } from "@/hooks/use-auth";
 import { EmployeeData } from "@/types/auth";
-import { User } from "@supabase/supabase-js";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,22 +34,13 @@ export function Header() {
   const getInitials = () => {
     if (!user) return "U";
     
-    // Check if the user is a Supabase User or our EmployeeData
-    if ('user_metadata' in user) {
-      // Supabase User
-      const userData = user.user_metadata || {};
-      const firstName = userData.first_name || "";
-      const lastName = userData.last_name || "";
-      return (firstName[0] || "") + (lastName[0] || "");
-    } else {
-      // EmployeeData
-      const name = (user as EmployeeData).name || "";
-      const nameParts = name.split(' ');
-      if (nameParts.length >= 2) {
-        return (nameParts[0][0] || "") + (nameParts[1][0] || "");
-      }
-      return name.substring(0, 1).toUpperCase() || "U";
+    // EmployeeData
+    const name = (user as EmployeeData).name || "";
+    const nameParts = name.split(' ');
+    if (nameParts.length >= 2) {
+      return (nameParts[0][0] || "") + (nameParts[1][0] || "");
     }
+    return name.substring(0, 1).toUpperCase() || "U";
   };
   
   return (

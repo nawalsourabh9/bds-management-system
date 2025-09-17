@@ -1,6 +1,6 @@
 
 import { useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { fastapiService } from "@/services/fastapi-service";
 import { Task } from "@/types/task";
 import { toast } from "@/hooks/use-toast";
 import { useTaskDocumentUpload } from "@/hooks/use-task-document-upload";
@@ -66,17 +66,22 @@ export const useTaskCreate = (setIsCreateDialogOpen: (isOpen: boolean) => void) 
       
       console.log("Task payload with new recurring fields:", taskPayload);
 
-      const { data, error } = await supabase
-        .from('tasks')
-        .insert(taskPayload)
-        .select()
-        .single();
+      // Convert to FastAPI format
+      const fastapiPayload = {
+        title: taskPayload.title,
+        description: taskPayload.description,
+        priority: taskPayload.priority,
+        status: taskPayload.status,
+        due_date: taskPayload.due_date,
+        assigned_to: taskPayload.assignee,
+        department_id: null, // TODO: Map department name to ID
+        is_recurring: taskPayload.is_recurring,
+        recurring_frequency: taskPayload.recurring_frequency || "none",
+        is_customer_related: taskPayload.is_customer_related,
+        customer_name: taskPayload.customer_name
+      };
 
-      if (error) {
-        console.error("Task creation error:", error);
-        throw error;
-      }
-
+      const data = await fastapiService.createTask(fastapiPayload);
       console.log("Task created successfully:", data);
       
       // Process document uploads if any

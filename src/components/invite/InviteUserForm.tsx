@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Loader2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { fastapiService } from "@/services/fastapi-service";
 import { useNavigate } from "react-router-dom";
 import { InviteUserFormFields } from "./InviteUserFormFields";
 
@@ -55,17 +55,15 @@ export function InviteUserForm() {
         supervisorId: formData.supervisorId || null
       });
       
-      const response = await supabase.functions.invoke("send-invitation", {
-        body: {
-          email: formData.email,
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          position: formData.position,
-          role: formData.role,
-          departmentId: formData.departmentId || null,
-          phone: formData.phone || null,
-          supervisorId: formData.supervisorId || null
-        },
+      const response = await fastapiService.sendInvitation({
+        email: formData.email,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        position: formData.position,
+        role: formData.role,
+        departmentId: formData.departmentId || null,
+        phone: formData.phone || null,
+        supervisorId: formData.supervisorId || null
       });
 
       console.log("Invitation response:", response);

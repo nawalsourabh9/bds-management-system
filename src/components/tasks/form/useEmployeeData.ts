@@ -1,6 +1,5 @@
 
-import { useState, useEffect } from 'react';
-import { supabase } from "@/integrations/supabase/client";
+import { useState, useEffect } from "react";
 
 export interface Employee {
   id: string;
@@ -11,6 +10,8 @@ export interface Employee {
   employee_id: string;
 }
 
+import { API_BASE, API_ENDPOINTS } from '@/config/api';
+
 export const useEmployeeData = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -19,27 +20,34 @@ export const useEmployeeData = () => {
     const fetchEmployees = async () => {
       setIsLoading(true);
       try {
-        console.log("Fetching employee data for task assignment...");
+        console.log("Fetching employee data for task assignment from FastAPI...");
         
-        // Make sure we get all necessary fields and fetch only active employees
-        const { data, error } = await supabase
-          .from('employees')
-          .select('id, name, email, department, position, employee_id')  
-          .eq('status', 'Active') // Only fetch active employees
-          .order('name');
-          
-        if (error) {
-          console.error("Error fetching employees:", error);
-          throw error;
+        // Fetch employees from our new FastAPI backend
+        const response = await fetch(`${API_BASE}/api/v1/users`);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
         
-        console.log("Successfully fetched employee data:", data?.length || 0, "records");
-        if (data && data.length > 0) {
-          console.log("First employee record:", data[0]);
-        }
+        const data = await response.json();
+        const usersData = data.users || [];
+        
+        console.log("Successfully fetched employee data from FastAPI:", usersData.length, "records");
+        
+        // Map the data to our Employee interface
+        const formattedEmployees: Employee[] = usersData
+          .filter((user: any) => user.is_active) // Only active users
+          .map((user: any) => ({
+            id: user.id,
+            name: `${user.first_name} ${user.last_name}`,
+            email: user.email,
+            department: user.department || 'Unknown',
+            position: user.role || 'User',
+            employee_id: user.id // Using id as employee_id for now
+          }));
         
         // Filter out any potential null values just to be safe
-        const validEmployees = (data || []).filter(emp => emp && emp.id);
+        const validEmployees = formattedEmployees.filter(emp => emp && emp.id);
         setEmployees(validEmployees);
         
         // Log all employee IDs for debugging

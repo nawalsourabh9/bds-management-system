@@ -1,184 +1,209 @@
 
-import React, { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import React, { useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Task } from "@/types/task";
-import { supabase } from "@/integrations/supabase/client";
-import { toast } from "@/hooks/use-toast";
-import { formatDateForInput } from "@/utils/dateUtils";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Clock, CheckCircle, AlertCircle, HelpCircle, Pause, XCircle, Shield, Eye, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
 
 interface StatusUpdateDialogProps {
-  task: Task | null;
-  isOpen: boolean;
-  onClose: () => void;
-  onUpdateTask: (task: Task) => void;
+  taskId: string;
+  currentStatus: string;
+  currentPriority: string;
+  onStatusUpdate: (taskId: string, newStatus: string, newPriority: string, comments: string) => Promise<void>;
+  trigger?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
+const statusOptions = [
+  { value: 'not-started', label: 'Not Started', icon: HelpCircle, color: 'bg-gray-50 text-gray-700' },
+  { value: 'pending', label: 'Pending', icon: HelpCircle, color: 'bg-blue-50 text-blue-700' },
+  { value: 'in-progress', label: 'In Progress', icon: Clock, color: 'bg-amber-50 text-amber-700' },
+  { value: 'under-review', label: 'Under Review', icon: Eye, color: 'bg-purple-50 text-purple-700' },
+  { value: 'on-hold', label: 'On Hold', icon: Pause, color: 'bg-orange-50 text-orange-700' },
+  { value: 'waiting-for-approval', label: 'Waiting for Approval', icon: AlertTriangle, color: 'bg-yellow-50 text-yellow-700' },
+  { value: 'blocked', label: 'Blocked', icon: Shield, color: 'bg-red-100 text-red-800' },
+  { value: 'overdue', label: 'Overdue', icon: AlertCircle, color: 'bg-red-50 text-red-700' },
+  { value: 'completed', label: 'Completed', icon: CheckCircle, color: 'bg-green-50 text-green-700' },
+  { value: 'cancelled', label: 'Cancelled', icon: XCircle, color: 'bg-gray-100 text-gray-800' },
+];
+
+const priorityOptions = [
+  { value: 'low', label: 'Low', color: 'bg-green-50 text-green-700' },
+  { value: 'medium', label: 'Medium', color: 'bg-amber-50 text-amber-700' },
+  { value: 'high', label: 'High', color: 'bg-orange-50 text-orange-700' },
+  { value: 'urgent', label: 'Urgent', color: 'bg-red-50 text-red-700' },
+  { value: 'critical', label: 'Critical', color: 'bg-red-100 text-red-800' },
+  { value: 'emergency', label: 'Emergency', color: 'bg-red-200 text-red-900' },
+];
+
 const StatusUpdateDialog: React.FC<StatusUpdateDialogProps> = ({
-  task,
-  isOpen,
-  onClose,
-  onUpdateTask
+  taskId,
+  currentStatus,
+  currentPriority,
+  onStatusUpdate,
+  trigger,
+  open: externalOpen,
+  onOpenChange
 }) => {
-  const [status, setStatus] = useState<'not-started' | 'in-progress' | 'completed' | 'overdue'>('not-started');
-  const [comments, setComments] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [fullTaskData, setFullTaskData] = useState<Task | null>(null);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = externalOpen !== undefined ? externalOpen : internalOpen;
+  const setOpen = onOpenChange || setInternalOpen;
+  const [newStatus, setNewStatus] = useState(currentStatus);
+  const [newPriority, setNewPriority] = useState(currentPriority);
+  const [comments, setComments] = useState("");
+  const [isUpdating, setIsUpdating] = useState(false);
 
-  // Fetch complete task data when dialog opens
-  useEffect(() => {
-    const fetchCompleteTaskData = async () => {
-      if (!task?.id || !isOpen) return;
-      
-      try {
-        const { data, error } = await supabase
-          .from('tasks')
-          .select('*')
-          .eq('id', task.id)
-          .single();
+  const handleUpdate = async () => {
+    if (newStatus === currentStatus && newPriority === currentPriority && !comments.trim()) {
+      toast.info("No changes made");
+      return;
+    }
 
-        if (error) {
-          console.error('Error fetching complete task data:', error);
-          return;
-        }
-
-        // Convert database format to Task format - EXCLUDE recurrenceCountInPeriod
-        const completeTask: Task = {
-          id: data.id,
-          title: data.title,
-          description: data.description || '',
-          department: data.department,
-          priority: data.priority as 'low' | 'medium' | 'high',
-          dueDate: data.due_date,
-          assignee: data.assignee || 'unassigned',
-          status: data.status as 'completed' | 'in-progress' | 'overdue' | 'not-started',
-          createdAt: data.created_at,
-          isRecurring: data.is_recurring || false,
-          recurringFrequency: data.recurring_frequency,
-          startDate: data.start_date,
-          endDate: data.end_date,
-          isCustomerRelated: data.is_customer_related || false,
-          customerName: data.customer_name,
-          attachmentsRequired: data.attachments_required as 'none' | 'optional' | 'required',
-          comments: data.comments || '',
-          // Exclude problematic fields that should be backend-managed
-          parentTaskId: data.parent_task_id,
-          originalTaskName: data.original_task_name
-          // NOTE: Intentionally excluding recurrenceCountInPeriod to prevent type errors
-        };
-
-        console.log('StatusUpdateDialog: Fetched complete task data (no recurrenceCountInPeriod):', completeTask);
-        setFullTaskData(completeTask);
-        setStatus(completeTask.status);
-        setComments(completeTask.comments || '');
-      } catch (error) {
-        console.error('Error fetching task data:', error);
-        toast({
-          title: "Error",
-          description: "Failed to load complete task data",
-          variant: "destructive"
-        });
-      }
-    };
-
-    fetchCompleteTaskData();
-  }, [task?.id, isOpen]);
-
-  const handleSubmit = async () => {
-    if (!fullTaskData) return;
-
-    setIsLoading(true);
+    setIsUpdating(true);
     try {
-      // Create a clean task object for update - ensure no problematic fields
-      const updatedTask: Task = {
-        ...fullTaskData,
-        status,
-        comments
-        // NOTE: recurrenceCountInPeriod is intentionally excluded
-      };
-
-      console.log('StatusUpdateDialog: Updating task status with clean data (no recurrenceCountInPeriod):', {
-        id: updatedTask.id,
-        status: updatedTask.status,
-        comments: updatedTask.comments,
-        hasRecurrenceCount: 'recurrenceCountInPeriod' in updatedTask
-      });
-      
-      await onUpdateTask(updatedTask);
-      onClose();
+      await onStatusUpdate(taskId, newStatus, newPriority, comments);
+      toast.success("Task status updated successfully");
+      setOpen(false);
+      setComments("");
     } catch (error) {
-      console.error('Error updating task status:', error);
+      toast.error("Failed to update task status");
+      console.error("Status update error:", error);
     } finally {
-      setIsLoading(false);
+      setIsUpdating(false);
     }
   };
 
-  const handleClose = () => {
-    setStatus('not-started');
-    setComments('');
-    setFullTaskData(null);
-    onClose();
+  const getStatusIcon = (status: string) => {
+    const statusOption = statusOptions.find(option => option.value === status);
+    return statusOption ? statusOption.icon : HelpCircle;
   };
 
-  if (!fullTaskData) return null;
+  const getStatusColor = (status: string) => {
+    const statusOption = statusOptions.find(option => option.value === status);
+    return statusOption ? statusOption.color : 'bg-gray-50 text-gray-700';
+  };
+
+  const getPriorityColor = (priority: string) => {
+    const priorityOption = priorityOptions.find(option => option.value === priority);
+    return priorityOption ? priorityOption.color : 'bg-gray-50 text-gray-700';
+  };
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        {trigger || (
+          <Button variant="outline" size="sm">
+            Update Status
+          </Button>
+        )}
+      </DialogTrigger>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>Update Task Status</DialogTitle>
         </DialogHeader>
         
-        <div className="space-y-4 py-4">
-          <div>
-            <h3 className="font-medium mb-2">{fullTaskData.title}</h3>
-            <p className="text-sm text-muted-foreground">{fullTaskData.description}</p>
-            {fullTaskData.isRecurring && (
-              <div className="mt-2 text-xs text-blue-600 bg-blue-50 p-2 rounded">
-                <strong>Recurring Task:</strong> {fullTaskData.recurringFrequency} 
-                {fullTaskData.startDate && fullTaskData.endDate && (
-                  <span> ({formatDateForInput(fullTaskData.startDate)} to {formatDateForInput(fullTaskData.endDate)})</span>
-                )}
-              </div>
-            )}
+        <div className="space-y-6">
+          {/* Current Status Display */}
+          <div className="space-y-2">
+            <Label>Current Status</Label>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className={getStatusColor(currentStatus)}>
+                {React.createElement(getStatusIcon(currentStatus), { className: "h-3 w-3" })}
+                {statusOptions.find(option => option.value === currentStatus)?.label || currentStatus}
+              </Badge>
+              <Badge variant="outline" className={getPriorityColor(currentPriority)}>
+                {priorityOptions.find(option => option.value === currentPriority)?.label || currentPriority}
+              </Badge>
+            </div>
           </div>
 
+          {/* New Status Selection */}
           <div className="space-y-2">
-            <label className="text-sm font-medium">Status</label>
-            <Select value={status} onValueChange={(value: any) => setStatus(value)}>
+            <Label htmlFor="status">New Status</Label>
+            <Select value={newStatus} onValueChange={setNewStatus}>
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue placeholder="Select new status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="not-started">Not Started</SelectItem>
-                <SelectItem value="in-progress">In Progress</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-                <SelectItem value="overdue">Overdue</SelectItem>
+                {statusOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    <div className="flex items-center gap-2">
+                      {React.createElement(option.icon, { className: "h-4 w-4" })}
+                      {option.label}
+                    </div>
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
 
+          {/* New Priority Selection */}
           <div className="space-y-2">
-            <label className="text-sm font-medium">Comments (Optional)</label>
+            <Label htmlFor="priority">New Priority</Label>
+            <Select value={newPriority} onValueChange={setNewPriority}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select new priority" />
+              </SelectTrigger>
+              <SelectContent>
+                {priorityOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className={option.color}>
+                        {option.label}
+                      </Badge>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Comments */}
+          <div className="space-y-2">
+            <Label htmlFor="comments">Comments (Optional)</Label>
             <Textarea
-              placeholder="Add any comments about the status update..."
+              id="comments"
+              placeholder="Add comments about this status change..."
               value={comments}
               onChange={(e) => setComments(e.target.value)}
               rows={3}
             />
           </div>
-        </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit} disabled={isLoading}>
-            {isLoading ? "Updating..." : "Update Status"}
-          </Button>
-        </DialogFooter>
+          {/* Preview */}
+          {(newStatus !== currentStatus || newPriority !== currentPriority) && (
+            <div className="space-y-2">
+              <Label>Preview</Label>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className={getStatusColor(newStatus)}>
+                  {React.createElement(getStatusIcon(newStatus), { className: "h-3 w-3" })}
+                  {statusOptions.find(option => option.value === newStatus)?.label || newStatus}
+                </Badge>
+                <Badge variant="outline" className={getPriorityColor(newPriority)}>
+                  {priorityOptions.find(option => option.value === newPriority)?.label || newPriority}
+                </Badge>
+              </div>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleUpdate} 
+              disabled={isUpdating}
+            >
+              {isUpdating ? "Updating..." : "Update Status"}
+            </Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );

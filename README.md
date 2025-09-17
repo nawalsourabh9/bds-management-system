@@ -1,352 +1,190 @@
 
 # BDS Management System
 
-A modern Business Document System with Quality Management System (QMS) features, built with React, FastAPI, and PostgreSQL. Features Apple-like UI/UX with glass morphism effects and orange theme.
+A comprehensive task management system designed for BDS Manufacturing with Indian names, real-time status updates, and Azure integration.
 
-## 🚀 Features
-
-- 🎨 **Modern UI/UX** - Apple-like design with glass morphism effects
-- 🍊 **Orange Theme** - Beautiful orange color scheme throughout
-- 📅 **Calendar Integration** - Full calendar functionality with drag & drop
-- 🔄 **Task Generation** - Automated recurring task creation
-- 📊 **QMS Features** - Document control, CAPA, audits, processes
-- 🔐 **Authentication** - JWT-based authentication system
-- 📱 **Responsive Design** - Works on all devices
-- 🚀 **Real-time Updates** - WebSocket integration
-- 🐳 **Docker Support** - Easy deployment with Docker
-- ☁️ **Azure Integration** - Cloud deployment ready
-
-## 🛠️ Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
+- Docker & Docker Compose
+- Node.js (v18+) & npm
+- Azure CLI (for cloud deployment)
 
-- Node.js 18+
-- Python 3.9+
-- PostgreSQL 15+
-- Redis 7+
+### Setup Options
 
-### 1. Clone and Setup
-
+**Option 1: Complete Setup (Recommended)**
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd bds-management-system
-
-# Make setup script executable
-chmod +x setup-project.sh
-
-# Run the complete setup
-./setup-project.sh
+chmod +x setup.sh
+./setup.sh
+# Choose option 1 for complete setup
 ```
 
-### 2. Start Development Servers
-
+**Option 2: Individual Components**
 ```bash
-# Start both backend and frontend
-./start-dev.sh
+# Database only
+./scripts/setup-docker.sh
+
+# Azure deployment
+./scripts/setup-azure.sh
+
+# Complete local setup
+./scripts/setup-complete.sh
 ```
 
-### 3. Access the Application
+## 📊 System Overview
 
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8000
-- **API Documentation**: http://localhost:8000/docs
+### Database Structure
+- **Users**: 30+ users with Indian names
+- **Departments**: 8 manufacturing departments
+- **Tasks**: 10+ status types, 6 priority levels
+- **Real-time Updates**: Status changes tracked automatically
 
-### 4. Default Credentials
+### User Roles
+- **SuperAdmin**: `admin@bdsmanufacturing.in` (Full system access)
+- **Admin**: `sourabh.nawal@bdsmanufacturing.in` (Department management)
+- **Manager**: Department heads (Team management)
+- **Supervisor**: Task oversight
+- **User**: Basic task operations
 
-- **Email**: admin@bds.com
-- **Password**: admin123
+### Task Statuses
+- `not-started` → `pending` → `in-progress` → `completed`
+- `under-review` → `on-hold` → `blocked` → `waiting-for-approval`
+- `overdue` → `cancelled`
 
-## 📁 Project Structure
+### Priorities
+- `low` → `medium` → `high` → `urgent` → `critical` → `emergency`
+
+## 🏗️ Architecture
 
 ```
-bds-management-system/
-├── backend/                 # FastAPI backend
-│   ├── app/
-│   │   ├── api/            # API routes
-│   │   ├── models/         # Database models
-│   │   ├── services/       # Business logic
-│   │   └── core/           # Core functionality
-│   ├── alembic/            # Database migrations
-│   └── tests/              # Backend tests
-├── frontend/               # React frontend
-│   ├── src/
-│   │   ├── components/     # React components
-│   │   ├── hooks/          # Custom hooks
-│   │   ├── services/       # API services
-│   │   └── utils/          # Utility functions
-│   └── public/             # Static assets
-├── database/               # Database scripts
-│   ├── migrations/         # Database migrations
-│   └── init/               # Initialization scripts
-├── scripts/                # Setup and utility scripts
-└── docs/                   # Documentation
+BDS Management System/
+├── scripts/                 # All setup and utility scripts
+│   ├── setup-complete.sh   # Complete local setup
+│   ├── setup-docker.sh     # Database setup only
+│   ├── setup-azure.sh      # Azure deployment
+│   └── ...
+├── database/               # Database schema and seed data
+│   └── schema/
+│       ├── 01-bds_schema.sql
+│       └── 02-seed_data.sql
+├── src/                    # Frontend React application
+├── backend/                # Backend API (created by setup)
+├── docker-compose.yml      # Docker services
+└── setup.sh               # Main setup script
 ```
 
-## 🎨 UI/UX Features
+## 🔧 Access Information
 
-### Glass Morphism Design
-- Frosted glass effects throughout the interface
-- Subtle shadows and blur effects
-- Smooth transitions and animations
+### Local Development
+- **Frontend**: http://localhost:5173
+- **Backend API**: http://localhost:3001
+- **PostgreSQL**: localhost:5432
+- **PgAdmin**: http://localhost:8080
 
-### Orange Theme
-- Primary: #FF6B35
-- Secondary: #FF8C42
-- Accent: #FFA500
-- Consistent orange color scheme
+### Test Users (Password: admin123)
+- **SuperAdmin**: `admin@bdsmanufacturing.in`
+- **Admin**: `sourabh.nawal@bdsmanufacturing.in`
+- **Quality Manager**: `priya.sharma@bdsmanufacturing.in`
+- **Production Manager**: `rajesh.kumar@bdsmanufacturing.in`
 
-### Interactive Elements
-- Glossy toggle switches
-- Smooth hover effects
-- Responsive design
-- Mobile-first approach
+### API Endpoints
+- Health Check: `GET /api/health`
+- Users: `GET /api/users`
+- Tasks: `GET /api/tasks`
 
-## 🗄️ Database Schema
+## 🎯 Key Features
 
-### Core Tables
-- **users** - User management and authentication
-- **departments** - Organizational structure
-- **tasks** - Task management with recurring support
-- **calendar_events** - Calendar and scheduling
-- **task_templates** - Reusable task definitions
-- **documents** - Document management system
+### ✅ Real-Time Status Updates
+- Frontend can update all task statuses dynamically
+- Status badges with icons and colors
+- Comprehensive status update dialog
 
-### Key Features
-- UUID primary keys for scalability
-- JSONB fields for flexible data storage
-- Proper indexing for performance
-- Automatic timestamp management
-- Soft delete support
+### ✅ BDS Manufacturing Data
+- Indian names and manufacturing departments
+- Quality Assurance, Production, R&D, Supply Chain
+- Real manufacturing tasks and workflows
 
-## 🔧 Development
+### ✅ Azure Integration Ready
+- Azure PostgreSQL setup script
+- Azure CLI automation
+- Cloud deployment ready
 
-### Backend Development
+### ✅ Comprehensive Task Management
+- 10 different task statuses
+- 6 priority levels
+- Recurring tasks support
+- Customer-related tasks
+- Document attachments
 
+## 🚀 Deployment Options
+
+### Local Development
 ```bash
-cd backend
-
-# Activate virtual environment
-source venv/bin/activate
-
-# Run migrations
-alembic upgrade head
-
-# Start development server
-uvicorn app.main:app --reload
+./setup.sh
+# Choose option 1 for complete local setup
 ```
 
-### Frontend Development
-
+### Azure Cloud
 ```bash
-cd frontend
-
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
+./setup.sh
+# Choose option 3 for Azure deployment
 ```
 
-### Database Management
-
+### Docker Only
 ```bash
-# Create migration
-cd backend
-alembic revision --autogenerate -m "Description"
-
-# Apply migrations
-alembic upgrade head
-
-# Reset database
-alembic downgrade base
-alembic upgrade head
+./setup.sh
+# Choose option 2 for database only
 ```
 
-## 🐳 Docker Deployment
+## 📁 Scripts Overview
 
-### Local Docker Setup
+| Script | Purpose |
+|--------|---------|
+| `setup-complete.sh` | Complete local setup (DB + Backend + Frontend) |
+| `setup-docker.sh` | Database setup with Docker |
+| `setup-azure.sh` | Azure PostgreSQL and cloud deployment |
+| `setup-database.sh` | Database schema and seed data only |
 
-```bash
-# Start with Docker
-docker-compose up --build
+## 🔍 Testing the System
 
-# Stop services
-docker-compose down
-```
+1. **Login**: Use any test user with password `admin123`
+2. **Create Tasks**: Test task creation and assignment
+3. **Update Status**: Change task statuses using the frontend
+4. **View Dashboard**: Check different user roles and permissions
+5. **Database**: Use PgAdmin to inspect the database
 
-### Production Docker
+## 🛠️ Development
 
-```bash
-# Build and start production
-docker-compose -f docker-compose.prod.yml up --build -d
-```
+### Frontend Components
+- Enhanced `StatusBadge` with 10 status types
+- Enhanced `PriorityBadge` with 6 priority levels
+- `StatusUpdateDialog` for real-time updates
+- All components support dynamic status changes
 
-## ☁️ Azure Deployment
+### Backend API
+- Express.js server with PostgreSQL
+- RESTful endpoints for users and tasks
+- Database connection with connection pooling
 
-### 1. Setup Azure Resources
+### Database
+- PostgreSQL 17 with comprehensive schema
+- BDS manufacturing data with Indian names
+- Audit trails and task history
 
-```bash
-# Setup Azure infrastructure
-./setup-azure.sh
-```
+## 📞 Support
 
-### 2. Deploy to Azure
+For issues or questions:
+1. Check the database logs: `docker-compose logs postgres`
+2. Verify API endpoints: `curl http://localhost:3001/api/health`
+3. Check frontend: Open browser dev tools
 
-```bash
-# Deploy application
-./deploy-azure.sh
-```
+## 🎉 Ready to Use!
 
-### Azure Services Used
-- **Azure PostgreSQL** - Managed database
-- **Azure Storage** - File storage
-- **Azure App Service** - Web application hosting
-- **Azure Redis Cache** - Caching (optional)
+The BDS Management System is now ready with:
+- ✅ Complete database with Indian names
+- ✅ Real-time status updates
+- ✅ Azure deployment ready
+- ✅ Clean, organized structure
+- ✅ Comprehensive documentation
 
-## 📊 QMS Features
-
-### Document Management
-- Version control
-- Approval workflows
-- Document templates
-- Search and indexing
-
-### Process Management
-- Visual process flows
-- Process templates
-- Process monitoring
-- Performance analytics
-
-### CAPA Management
-- Corrective actions
-- Preventive actions
-- Effectiveness tracking
-- Root cause analysis
-
-### Audit Management
-- Audit planning
-- Checklist management
-- Finding tracking
-- Compliance reporting
-
-## 🔄 Task Generation System
-
-### Features
-- **Recurring Tasks** - Daily, weekly, monthly, etc.
-- **Template-based** - Create tasks from templates
-- **Smart Scheduling** - Intelligent due date calculation
-- **Duplicate Prevention** - Avoid duplicate task generation
-- **Batch Operations** - Generate multiple tasks at once
-
-### Frequencies Supported
-- Daily
-- Weekly
-- Bi-weekly
-- Monthly
-- Quarterly
-- Annually
-- Custom intervals
-
-## 📅 Calendar Integration
-
-### Features
-- **Multiple Views** - Month, week, day, list
-- **Event Types** - Tasks, meetings, deadlines, reminders
-- **Recurring Events** - Handle recurring patterns
-- **Drag & Drop** - Reschedule by dragging
-- **Quick Actions** - Quick task creation
-
-## 🚀 Performance Optimizations
-
-### Backend
-- Database indexing
-- Query optimization
-- Caching with Redis
-- Background task processing
-- Connection pooling
-
-### Frontend
-- Code splitting
-- Lazy loading
-- Image optimization
-- Bundle optimization
-- Service worker caching
-
-## 🔒 Security Features
-
-### Authentication
-- JWT-based authentication
-- Password hashing with bcrypt
-- Session management
-- Role-based access control
-
-### Data Protection
-- Input validation
-- SQL injection prevention
-- XSS protection
-- CSRF protection
-- Rate limiting
-
-## 📈 Monitoring & Analytics
-
-### Metrics
-- Application performance
-- Database performance
-- User activity
-- Error tracking
-- Business metrics
-
-### Logging
-- Structured logging
-- Error tracking
-- Performance monitoring
-- Audit trails
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-- **Documentation**: Check the `/docs` folder
-- **Issues**: Create an issue in the repository
-- **Email**: support@bds.com
-
-## 🔄 Changelog
-
-### v1.0.0 (Current)
-- Initial release
-- Basic task management
-- Calendar integration
-- Document management
-- QMS features
-- Azure deployment support
-
-## 🎯 Roadmap
-
-### v1.1.0 (Next)
-- Advanced task dependencies
-- Resource management
-- Time tracking
-- Advanced analytics
-- Mobile app
-
-### v1.2.0 (Future)
-- AI-powered insights
-- Advanced reporting
-- Integration APIs
-- Multi-tenant support
-- Advanced QMS features
-
----
-
-**Built with ❤️ and ☕ by the BDS Team**
+**Start with**: `./setup.sh` and choose option 1 for complete setup!

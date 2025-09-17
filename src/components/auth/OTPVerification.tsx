@@ -1,89 +1,86 @@
-
-import { useState } from "react";
-import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
-import { useOTP } from "@/hooks/use-otp";
-import { OTPInput } from "./OTPInput";
-import { VerificationActions } from "./VerificationActions";
-import { sendOTPEmail } from "@/services/emailService";
+import React, { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { toast } from 'sonner';
 
 interface OTPVerificationProps {
   email: string;
-  onVerificationComplete: () => void;
+  onSuccess: () => void;
+  onResend: () => void;
 }
 
-export const OTPVerification = ({ email, onVerificationComplete }: OTPVerificationProps) => {
-  const [resendLoading, setResendLoading] = useState(false);
-  const {
-    otp,
-    setOtp,
-    loading,
-    verified,
-    latestOtp,
-    verifyOTP,
-    autoFillOtp
-  } = useOTP(email);
+export const OTPVerification: React.FC<OTPVerificationProps> = ({
+  email,
+  onSuccess,
+  onResend,
+}) => {
+  const [otp, setOtp] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleVerify = async () => {
-    const success = await verifyOTP();
-    if (success) {
-      setTimeout(() => {
-        onVerificationComplete();
-      }, 1500);
-    }
-  };
-
-  const handleResendCode = async () => {
-    setResendLoading(true);
+  const handleVerifyOTP = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    
     try {
-      const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
-      console.log("Resent OTP:", newOtp);
-      
-      const { error: otpError } = await supabase.from('otp_codes').insert({
-        email,
-        code: newOtp,
-        expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
-        verified: false
+      const response = await fetch('/api/v1/auth/verify-otp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, otp }),
       });
-
-      if (otpError) throw otpError;
-
-      // Always display the code for testing purposes
-      toast.success("New verification code sent. For testing use: " + newOtp);
       
-      // Attempt to send email but don't block on failure
-      try {
-        await sendOTPEmail(email, newOtp);
-      } catch (emailError) {
-        console.error("Email error during resend:", emailError);
+      if (!response.ok) {
+        throw new Error('Invalid OTP');
       }
+      
+      toast.success('OTP verified successfully');
+      onSuccess();
     } catch (error) {
-      console.error("Error resending code:", error);
-      toast.error("Failed to resend verification code");
+      console.error('OTP verification error:', error);
+      toast.error('Invalid OTP');
     } finally {
-      setResendLoading(false);
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="space-y-6">
-      <OTPInput
-        value={otp}
-        onChange={setOtp}
-        latestOtp={latestOtp}
-        onAutoFill={autoFillOtp}
-        email={email}
-        disabled={verified}
-      />
-      
-      <VerificationActions
-        verified={verified}
-        loading={loading}
-        resendLoading={resendLoading}
-        onVerify={handleVerify}
-        onResend={handleResendCode}
-        otpLength={otp.length}
-      />
-    </div>
+    <Card className="w-full max-w-md">
+      <CardHeader>
+        <CardTitle>Verify OTP</CardTitle>
+        <CardDescription>
+          Enter the OTP sent to {email}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleVerifyOTP} className="space-y-4">
+          <div>
+            <Label htmlFor="otp">OTP Code</Label>
+            <Input
+              id="otp"
+              type="text"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value)}
+              placeholder="Enter 6-digit OTP"
+              maxLength={6}
+              required
+            />
+          </div>
+          <Button type="submit" className="w-full" disabled={isLoading}>
+            {isLoading ? 'Verifying...' : 'Verify OTP'}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={onResend}
+          >
+            Resend OTP
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 };

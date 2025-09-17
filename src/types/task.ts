@@ -6,7 +6,7 @@ export interface Task {
   description: string;
   department: string;
   assignee: string;
-  priority: 'low' | 'medium' | 'high';
+  priority: 'low' | 'medium' | 'high' | 'urgent' | 'critical' | 'emergency';
   dueDate: string;
   status: 'completed' | 'in-progress' | 'overdue' | 'not-started';
   createdAt: string;
@@ -28,6 +28,7 @@ export interface Task {
     initials: string;
     department: string;
     position: string;
+    employeeId?: string;
   };
   attachments?: {
     id: string;

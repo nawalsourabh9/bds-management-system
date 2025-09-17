@@ -12,7 +12,7 @@ export interface TaskDocument {
   approvalHierarchy?: ApprovalHierarchy;
   revisions?: DocumentRevision[];
   file?: File; // For file uploads
-  filePath?: string; // For storage path in Supabase
+  filePath?: string; // For storage path
 }
 
 export interface DocumentRevision {

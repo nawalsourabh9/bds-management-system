@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { fastapiService } from "@/services/fastapi-service";
 import { toast } from "@/hooks/use-toast";
 
 export const useTaskAutomation = () => {
@@ -12,9 +12,9 @@ export const useTaskAutomation = () => {
       setIsRunning(true);
       console.log("Triggering task automation...");
 
-      // Call the Edge Function directly
-      const { data, error } = await supabase.functions.invoke('task-automation', {
-        body: { manual: true }
+      // Call the FastAPI endpoint directly
+      const { data, error } = await fastapiService.taskAutomation({
+        manual: true
       });
 
       if (error) {
@@ -49,7 +49,7 @@ export const useTaskAutomation = () => {
       console.log('Running background task automation...');
       
       // Run the automation function (no toast for background operations)
-      const { data, error } = await supabase.functions.invoke('task-automation');
+      const { data, error } = await fastapiService.taskAutomation();
       
       if (error) {
         console.error('Background automation error:', error);

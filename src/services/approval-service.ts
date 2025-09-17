@@ -1,92 +1,70 @@
-
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { API_BASE } from '@/config/api';
 
 export const checkUserApprovalStatus = async (userId: string, email: string) => {
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  
-  if (userError) throw userError;
-  
-  if (userData.user.user_metadata?.approved === true) {
-    return { approved: true, message: 'Account approved' };
+  try {
+    // Check user status via FastAPI
+    const response = await fetch(`${API_BASE}/api/v1/users/${userId}`);
+    
+    if (!response.ok) {
+      throw new Error('Failed to check user status');
+    }
+    
+    const userData = await response.json();
+    
+    if (userData.status === 'active') {
+      return { approved: true, message: 'Account approved' };
+    } else if (userData.status === 'inactive') {
+      return { approved: false, message: 'Account rejected' };
+    } else {
+      return { approved: false, message: 'Account pending approval' };
+    }
+  } catch (error) {
+    console.error('Error checking user approval status:', error);
+    return { approved: false, message: 'Error checking approval status' };
   }
-  
-  const { data: approvalData, error: approvalError } = await supabase
-    .from('account_approvals')
-    .select('status')
-    .eq('user_id', userId)
-    .single();
-  
-  if (approvalError && approvalError.code !== 'PGRST116') {
-    throw approvalError;
-  }
-  
-  if (!approvalData || approvalData.status !== 'approved') {
-    return { 
-      approved: false, 
-      message: 'Your account is pending approval. Please check back later or contact an administrator.' 
-    };
-  }
-  
-  return { approved: true, message: 'Account approved' };
 };
 
 export const approveUser = async (userId: string) => {
-  await handleUserApproval(userId, true);
+  try {
+    const response = await fetch(`${API_BASE}/api/v1/users/${userId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ status: 'active' }),
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to approve user');
+    }
+    
+    toast.success('User approved successfully');
+  } catch (error) {
+    console.error('Error approving user:', error);
+    toast.error('Failed to approve user');
+    throw error;
+  }
 };
 
 export const rejectUser = async (userId: string) => {
-  await handleUserApproval(userId, false);
-};
-
-const handleUserApproval = async (userId: string, approved: boolean) => {
-  const status = approved ? 'approved' : 'rejected';
-  
-  const { error: updateError } = await supabase
-    .from('account_approvals')
-    .update({ 
-      status, 
-      updated_at: new Date().toISOString() 
-    })
-    .eq('user_id', userId);
-  
-  if (updateError) throw updateError;
-
-  if (approved) {
-    const { error: adminUpdateError } = await supabase.functions.invoke('database-utils', {
-      body: {
-        operation: 'updateUserApproval',
-        userId: userId,
-        approved: true
+  try {
+    const response = await fetch(`${API_BASE}/api/v1/users/${userId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
       },
+      body: JSON.stringify({ status: 'inactive' }),
     });
     
-    if (adminUpdateError) throw adminUpdateError;
+    if (!response.ok) {
+      throw new Error('Failed to reject user');
+    }
+    
+    toast.success('User rejected successfully');
+  } catch (error) {
+    console.error('Error rejecting user:', error);
+    toast.error('Failed to reject user');
+    throw error;
   }
-
-  const { data: userData, error: userError } = await supabase
-    .from('account_approvals')
-    .select('email')
-    .eq('user_id', userId)
-    .single();
-
-  if (userError) throw userError;
-
-  if (userData && userData.email) {
-    const subject = approved ? 'Your Account Has Been Approved' : 'Your Account Registration Status';
-    const body = approved 
-      ? 'Your account has been approved. You can now log in to the system.'
-      : 'We regret to inform you that your account registration request has been declined. Please contact the administrator for more information.';
-
-    await supabase.functions.invoke('send-email', {
-      body: {
-        to: userData.email,
-        subject,
-        body,
-        isHtml: false
-      }
-    });
-  }
-
-  toast.success(`User ${approved ? 'approved' : 'rejected'} successfully`);
 };
