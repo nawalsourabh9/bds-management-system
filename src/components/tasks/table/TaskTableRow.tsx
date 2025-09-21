@@ -50,9 +50,20 @@ const TaskTableRow: React.FC<TaskTableRowProps> = ({
   // Determine if this is an instance task (indented display)
   const isInstanceTask = !!task.parentTaskId;
   
+  // Determine background color based on task type
+  const getBackgroundColor = () => {
+    if (isInstanceTask) {
+      return 'bg-blue-50/30 border-l-4 border-l-blue-300'; // Light blue for child instances
+    } else if (task.isRecurring) {
+      return 'bg-gray-800 text-white hover:bg-gray-700 border-l-4 border-l-purple-400'; // Dark background for parent recurring tasks
+    } else {
+      return 'bg-white hover:bg-muted/50'; // Default for one-time tasks
+    }
+  };
+
   return (
     <TableRow 
-      className={`hover:bg-muted/50 ${isInstanceTask ? 'bg-muted/20 border-l-4 border-l-blue-200' : ''}`}
+      className={`${getBackgroundColor()}`}
     >
       <TableCell className="font-medium min-w-[250px]">
         <div className={`flex flex-col gap-2 ${isInstanceTask ? 'ml-4' : ''}`}>
@@ -73,38 +84,59 @@ const TaskTableRow: React.FC<TaskTableRowProps> = ({
         </div>
       </TableCell>
       <TableCell className="min-w-[120px]">
-        <div className="flex items-center gap-2">
-          {task.assigneeDetails ? (
-            <>
-              <Avatar className="h-6 w-6">
-                <AvatarFallback className="text-xs">
-                  {task.assigneeDetails.initials}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium">{task.assigneeDetails.name}</span>
-                {task.assigneeDetails.employeeId && (
-                  <span className="text-xs text-muted-foreground">{task.assigneeDetails.employeeId}</span>
-                )}
-              </div>
-            </>
-          ) : (
-            <span className="text-sm text-muted-foreground">Unassigned</span>
-          )}
-        </div>
+        {isInstanceTask ? (
+          <div className="flex items-center gap-2">
+            {task.assigneeDetails ? (
+              <>
+                <Avatar className="h-6 w-6">
+                  <AvatarFallback className="text-xs">
+                    {task.assigneeDetails.initials}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium">{task.assigneeDetails.name}</span>
+                  {task.assigneeDetails.employeeId && (
+                    <span className="text-xs text-muted-foreground">{task.assigneeDetails.employeeId}</span>
+                  )}
+                </div>
+              </>
+            ) : (
+              <span className="text-sm text-muted-foreground">Unassigned</span>
+            )}
+          </div>
+        ) : (
+          <span className="text-sm text-muted-foreground">Template</span>
+        )}
       </TableCell>
       <TableCell className="min-w-[100px]">
         <span className="text-sm">{task.department}</span>
       </TableCell>
       <TableCell className="min-w-[120px]">
-        <div className="flex flex-col gap-1">
-          <span className="text-sm">{formatDateForDisplay(task.dueDate)}</span>
-          {isInstanceTask && task.startDate && (
-            <span className="text-xs text-muted-foreground">
-              Started: {formatDateForDisplay(task.startDate)}
-            </span>
-          )}
-        </div>
+        <span className="text-sm">{task.assigneeDetails?.reportsTo || 'N/A'}</span>
+      </TableCell>
+      <TableCell className="min-w-[120px]">
+        {isInstanceTask ? (
+          <div className="flex flex-col gap-1">
+            <span className="text-sm">{formatDateForDisplay(task.dueDate)}</span>
+            {task.startDate && (
+              <span className="text-xs text-muted-foreground">
+                Started: {formatDateForDisplay(task.startDate)}
+              </span>
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1">
+            {task.startDate && (
+              <span className="text-sm">Start: {formatDateForDisplay(task.startDate)}</span>
+            )}
+            {task.endDate && (
+              <span className="text-sm">End: {formatDateForDisplay(task.endDate)}</span>
+            )}
+            {!task.startDate && !task.endDate && (
+              <span className="text-sm text-muted-foreground">Template</span>
+            )}
+          </div>
+        )}
       </TableCell>
       <TableCell className="min-w-[80px]">
         <TaskPriorityBadge priority={task.priority} />

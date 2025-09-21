@@ -25,12 +25,17 @@ export const useEmployees = () => {
         name: `${user.first_name} ${user.last_name}`,
         email: user.email,
         role: user.role,
-        department: user.department_name || 'Unknown',
-        employeeId: user.id,
-        position: user.role,
+        department: user.department_id || '', // Store department ID for API calls
+        department_name: user.parent_department_name 
+          ? `${user.department_name} (${user.parent_department_name})` 
+          : user.department_name || 'No Department', // Store department name with parent for display
+        employeeId: user.employee_id || 'Not Set',
+        position: user.position_id || undefined, // Store position ID for API calls
+        position_name: user.position_name || 'No Position', // Store position name for display
         status: user.is_active ? "Active" : "Inactive",
         phone: user.phone || undefined,
-        supervisorId: user.supervisor_id || undefined,
+        supervisorId: user.reports_to_id || undefined,
+        reports_to_name: user.reports_to_name || 'No Manager', // Store reports-to name for display
         created_at: user.created_at,
         updated_at: user.updated_at
       }));
@@ -46,12 +51,18 @@ export const useEmployees = () => {
 
   const addEmployee = async (employeeData: Omit<Employee, 'id'>) => {
     try {
+      // Use sub-department if selected, otherwise use main department
+      const finalDepartmentId = employeeData.subDepartment || employeeData.department;
+      
       await fastapiService.createUser({
+        employee_id: employeeData.employeeId,
         email: employeeData.email,
         first_name: employeeData.name.split(' ')[0],
         last_name: employeeData.name.split(' ').slice(1).join(' '),
         role: employeeData.role,
-        department_id: employeeData.department,
+        department_id: finalDepartmentId || null,
+        position_id: employeeData.position || null,
+        reports_to_id: employeeData.supervisorId || null,
         is_active: employeeData.status === 'Active'
       });
 
@@ -65,12 +76,18 @@ export const useEmployees = () => {
 
   const updateEmployee = async (id: string, employeeData: Partial<Employee>) => {
     try {
+      // Use sub-department if selected, otherwise use main department
+      const finalDepartmentId = employeeData.subDepartment || employeeData.department;
+      
       await fastapiService.updateUser(id, {
+        employee_id: employeeData.employeeId,
         email: employeeData.email,
         first_name: employeeData.name?.split(' ')[0],
         last_name: employeeData.name?.split(' ').slice(1).join(' '),
         role: employeeData.role,
-        department_id: employeeData.department,
+        department_id: finalDepartmentId || null,
+        position_id: employeeData.position || null,
+        reports_to_id: employeeData.supervisorId || null,
         is_active: employeeData.status === 'Active'
       });
 

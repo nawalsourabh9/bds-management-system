@@ -1,11 +1,14 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { fastapiService } from "@/services/fastapi-service";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 
 interface CreateUserDialogProps {
   isOpen: boolean;
@@ -17,64 +20,164 @@ interface Department {
   id: string;
   name: string;
   description?: string;
+  parent_department_name?: string;
 }
 
+interface Position {
+  id: string;
+  name: string;
+  description?: string;
+  department_id: string;
+  level: number;
+}
+
+interface User {
+  id: string;
+  first_name: string;
+  last_name: string;
+  role: string;
+  position_name?: string;
+}
+
+const createUserSchema = z.object({
+  employeeId: z.string().min(1, { message: "Employee ID is required." }),
+  name: z.string().min(1, { message: "Name is required." }),
+  email: z.string().email({ message: "Invalid email address." }),
+  role: z.string().min(1, { message: "Role is required." }),
+  department: z.string().min(1, { message: "Department is required." }),
+  subDepartment: z.string().optional(),
+  position: z.string().optional(),
+  reportsTo: z.string().optional(),
+});
+
 export const CreateUserDialog = ({ isOpen, setIsOpen, onUserCreated }: CreateUserDialogProps) => {
-  const [formData, setFormData] = useState({
-    email: "",
-    firstName: "",
-    lastName: "",
-    role: "user",
-    departmentId: "",
-    isActive: true,
-  });
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [allDepartments, setAllDepartments] = useState<Department[]>([]);
+  const [subDepartments, setSubDepartments] = useState<Department[]>([]);
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [manageableUsers, setManageableUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingDepartments, setLoadingDepartments] = useState(false);
+
+  const form = useForm<z.infer<typeof createUserSchema>>({
+    resolver: zodResolver(createUserSchema),
+    defaultValues: {
+      employeeId: "",
+      name: "",
+      email: "",
+      role: "user",
+      department: "",
+      subDepartment: undefined,
+      position: undefined,
+      reportsTo: undefined,
+    },
+  });
+
+  const selectedDepartmentId = form.watch("department");
+  const selectedSubDepartmentId = form.watch("subDepartment");
 
   useEffect(() => {
     if (isOpen) {
       fetchDepartments();
+      fetchManageableUsers();
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    if (selectedDepartmentId) {
+      // Filter sub-departments for the selected main department
+      const mainDepartment = departments.find(dept => dept.id === selectedDepartmentId);
+      const subsForMainDept = allDepartments.filter(dept => 
+        dept.parent_department_name === mainDepartment?.name
+      );
+      setSubDepartments(subsForMainDept);
+      
+      // Reset sub-department selection when main department changes
+      form.setValue("subDepartment", undefined);
+      
+      // Fetch positions for the selected department (or sub-department)
+      fetchPositions(selectedDepartmentId);
+    } else {
+      setSubDepartments([]);
+      setPositions([]);
+      form.setValue("subDepartment", undefined);
+    }
+  }, [selectedDepartmentId, departments, allDepartments, form]);
+
+  useEffect(() => {
+    if (selectedSubDepartmentId) {
+      // Fetch positions for the selected sub-department
+      fetchPositions(selectedSubDepartmentId);
+    } else if (selectedDepartmentId) {
+      // If no sub-department selected, fetch positions for main department
+      fetchPositions(selectedDepartmentId);
+    }
+  }, [selectedSubDepartmentId, selectedDepartmentId]);
+
   const fetchDepartments = async () => {
     try {
+      setLoadingDepartments(true);
       const response = await fastapiService.getDepartments();
-      setDepartments(response.departments || []);
+      const allDepartments = response.departments || [];
+      
+      // Separate main departments (those without parent_department_name) from sub-departments
+      const mainDepartments = allDepartments.filter(dept => !dept.parent_department_name);
+      setDepartments(mainDepartments);
+      
+      // Store all departments for sub-department filtering
+      setAllDepartments(allDepartments);
     } catch (error) {
       console.error("Error fetching departments:", error);
       toast.error("Failed to load departments");
+    } finally {
+      setLoadingDepartments(false);
     }
   };
 
-  const handleInputChange = (field: string, value: string | boolean) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+  const fetchPositions = async (departmentId: string) => {
+    try {
+      const response = await fastapiService.getPositions(departmentId);
+      setPositions(response.positions || []);
+    } catch (error) {
+      console.error("Error fetching positions:", error);
+      toast.error("Failed to load positions");
+    }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const fetchManageableUsers = async () => {
+    try {
+      const response = await fastapiService.getUsers();
+      setManageableUsers(response.users || []);
+    } catch (error) {
+      console.error("Error fetching manageable users:", error);
+      toast.error("Failed to load users");
+    }
+  };
+
+  const onSubmit = async (values: z.infer<typeof createUserSchema>) => {
     setLoading(true);
 
     try {
+      const [firstName, lastName] = values.name.split(' ', 2);
+      
+      // Use sub-department ID if selected, otherwise use main department ID
+      const finalDepartmentId = values.subDepartment || values.department;
+      
       await fastapiService.createUser({
-        email: formData.email,
-        first_name: formData.firstName,
-        last_name: formData.lastName,
-        role: formData.role,
-        department_id: formData.departmentId || null,
-        is_active: formData.isActive,
+        employee_id: values.employeeId,
+        email: values.email,
+        first_name: firstName,
+        last_name: lastName || "",
+        role: values.role,
+        department_id: finalDepartmentId || null,
+        position_id: values.position || null,
+        reports_to_id: values.reportsTo || null,
+        is_active: true,
       });
 
       toast.success("User created successfully");
       setIsOpen(false);
-      setFormData({
-        email: "",
-        firstName: "",
-        lastName: "",
-        role: "user",
-        departmentId: "",
-        isActive: true,
-      });
+      form.reset();
       onUserCreated();
     } catch (error: any) {
       console.error("Error creating user:", error);
@@ -86,109 +189,206 @@ export const CreateUserDialog = ({ isOpen, setIsOpen, onUserCreated }: CreateUse
 
   const handleClose = () => {
     setIsOpen(false);
-    setFormData({
-      email: "",
-      firstName: "",
-      lastName: "",
-      role: "user",
-      departmentId: "",
-      isActive: true,
-    });
+    form.reset();
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New User</DialogTitle>
         </DialogHeader>
         
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="firstName">First Name</Label>
-              <Input
-                id="firstName"
-                value={formData.firstName}
-                onChange={(e) => handleInputChange("firstName", e.target.value)}
-                required
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <div className="grid grid-cols-3 gap-4">
+              <FormField
+                control={form.control}
+                name="employeeId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Employee ID</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g. EMP001" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Full Name</FormLabel>
+                    <FormControl>
+                      <Input placeholder="First Last" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input type="email" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="lastName">Last Name</Label>
-              <Input
-                id="lastName"
-                value={formData.lastName}
-                onChange={(e) => handleInputChange("lastName", e.target.value)}
-                required
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="department"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Department</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select main department" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {departments.map(dept => (
+                          <SelectItem key={dept.id} value={dept.id}>
+                            {dept.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="role"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Role</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select role" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="user">User</SelectItem>
+                        <SelectItem value="supervisor">Supervisor</SelectItem>
+                        <SelectItem value="manager">Manager</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="superadmin">Super Admin</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
             </div>
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              value={formData.email}
-              onChange={(e) => handleInputChange("email", e.target.value)}
-              required
-            />
-          </div>
+            {/* Sub-Department Field - Only show if main department is selected and has sub-departments */}
+            {selectedDepartmentId && subDepartments.length > 0 && (
+              <FormField
+                control={form.control}
+                name="subDepartment"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Sub-Department (Optional)</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select sub-department" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {subDepartments.map(subDept => (
+                          <SelectItem key={subDept.id} value={subDept.id}>
+                            {subDept.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
-          <div className="space-y-2">
-            <Label htmlFor="role">Role</Label>
-            <Select value={formData.role} onValueChange={(value) => handleInputChange("role", value)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select role" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="user">User</SelectItem>
-                <SelectItem value="supervisor">Supervisor</SelectItem>
-                <SelectItem value="manager">Manager</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
-                <SelectItem value="superadmin">Super Admin</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+            <div className="grid grid-cols-2 gap-4">
+              {selectedDepartmentId && (
+                <FormField
+                  control={form.control}
+                  name="position"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Position</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select position" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {positions.map(position => (
+                            <SelectItem key={position.id} value={position.id}>
+                              {position.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
-          <div className="space-y-2">
-            <Label htmlFor="department">Department</Label>
-            <Select value={formData.departmentId} onValueChange={(value) => handleInputChange("departmentId", value)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select department" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">No Department</SelectItem>
-                {departments.map((dept) => (
-                  <SelectItem key={dept.id} value={dept.id}>
-                    {dept.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              <FormField
+                control={form.control}
+                name="reportsTo"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Reports To</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select manager" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {manageableUsers.map(user => (
+                          <SelectItem key={user.id} value={user.id}>
+                            {user.first_name} {user.last_name} ({user.role})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
-          <div className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              id="isActive"
-              checked={formData.isActive}
-              onChange={(e) => handleInputChange("isActive", e.target.checked)}
-              className="rounded"
-            />
-            <Label htmlFor="isActive">Active User</Label>
-          </div>
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={handleClose}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? "Creating..." : "Create User"}
-            </Button>
-          </DialogFooter>
-        </form>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={handleClose}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? "Creating..." : "Create User"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );

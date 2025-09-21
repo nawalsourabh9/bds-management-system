@@ -17,6 +17,12 @@ import NonConformances from "@/pages/NonConformances";
 import Audits from "@/pages/Audits";
 import Analytics from "@/pages/Analytics";
 import Users from "@/pages/Users";
+import DepartmentsPage from "@/pages/DepartmentsPage";
+import { PositionsPage } from "@/pages/PositionsPage";
+import MindMapOrganization from "@/pages/MindMapOrganization";
+import MindMapDepartments from "@/pages/MindMapDepartments";
+import MindMapTasks from "@/pages/MindMapTasks";
+import MindMapProcesses from "@/pages/MindMapProcesses";
 import Profile from "@/pages/Profile";
 import Help from "@/pages/Help";
 import EmailTest from "@/pages/EmailTest";
@@ -124,6 +130,12 @@ export const AppRoutes = () => {
         { path: "/audits", element: <Audits /> },
         { path: "/analytics", element: <Analytics /> },
         { path: "/users", element: <Users /> },
+        { path: "/departments", element: <DepartmentsPage /> },
+        { path: "/positions", element: <PositionsPage /> },
+        { path: "/mind-map/organization", element: <MindMapOrganization /> },
+        { path: "/mind-map/departments", element: <MindMapDepartments /> },
+        { path: "/mind-map/tasks", element: <MindMapTasks /> },
+        { path: "/mind-map/processes", element: <MindMapProcesses /> },
         { path: "/profile", element: <Profile /> },
         { path: "/help", element: <Help /> },
         { path: "/email-test", element: <EmailTest /> }

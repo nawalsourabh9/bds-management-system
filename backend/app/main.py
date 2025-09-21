@@ -152,31 +152,180 @@ async def health_check():
         "version": "1.0.0"
     }
 
-@app.post("/api/v1/tasks/trigger-recurring")
-async def trigger_recurring_generation():
-    """Manually trigger recurring task generation for testing"""
+# ============================================================================
+# RECURRING PARENT-CHILD TASK SYSTEM
+# ============================================================================
+
+@app.get("/api/v1/recurring/parents")
+async def get_recurring_parent_tasks():
+    """Get all recurring parent tasks"""
     try:
-        # Call the database function to generate overdue recurring tasks
-        result = db_service.execute_query("""
-            SELECT generate_recurring_tasks() as generated_count;
+        parents = db_service.execute_query("""
+            SELECT t.*, d.name as department_name, u.first_name, u.last_name
+            FROM tasks t
+            LEFT JOIN departments d ON t.department_id = d.id
+            LEFT JOIN users u ON t.created_by = u.id
+            WHERE t.is_parent_task = TRUE
+            ORDER BY t.created_at DESC;
         """)
         
-        if result and len(result) > 0:
-            generated_count = result[0].get('generated_count', 0)
+        return {
+            "parents": parents,
+            "count": len(parents) if parents else 0,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error fetching recurring parent tasks: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.post("/api/v1/recurring/parent")
+async def create_recurring_parent_task(parent_data: dict):
+    """Create a new recurring parent task (no due date, only start/end dates)"""
+    try:
+        # Validate required fields
+        required_fields = ["title", "recurring_frequency", "created_by", "start_date"]
+        for field in required_fields:
+            if field not in parent_data:
+                raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+        
+        # Validate frequency options (matching frontend)
+        valid_frequencies = ["daily", "weekly", "bi-weekly", "monthly", "quarterly", "annually"]
+        if parent_data["recurring_frequency"] not in valid_frequencies:
+            raise HTTPException(status_code=400, detail=f"Invalid frequency. Must be one of: {', '.join(valid_frequencies)}")
+        
+        # Insert parent task (no due date, only start/end dates)
+        parent_id = db_service.execute_query("""
+            INSERT INTO tasks (
+                title, description, priority, department_id, created_by,
+                start_date, end_date, is_parent_task, is_recurring, recurring_frequency,
+                is_customer_related, customer_name, attachments_required, status
+            ) VALUES (
+                %(title)s, %(description)s, %(priority)s, %(department_id)s, %(created_by)s,
+                %(start_date)s, %(end_date)s, TRUE, TRUE, %(recurring_frequency)s,
+                %(is_customer_related)s, %(customer_name)s, %(attachments_required)s, 'not-started'
+            ) RETURNING id;
+        """, parent_data)
+        
+        if parent_id and len(parent_id) > 0:
             return {
-                "message": f"Recurring task generation triggered",
-                "generated_count": generated_count,
+                "message": "Recurring parent task created successfully",
+                "parent_task_id": parent_id[0]["id"],
                 "timestamp": datetime.now().isoformat()
             }
         else:
-            return {
-                "message": "No recurring tasks to generate",
-                "generated_count": 0,
-                "timestamp": datetime.now().isoformat()
-            }
+            raise HTTPException(status_code=500, detail="Failed to create parent task")
             
     except Exception as e:
-        logger.error(f"Error triggering recurring task generation: {e}")
+        logger.error(f"Error creating recurring parent task: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.post("/api/v1/recurring/{parent_id}/first-child")
+async def create_first_child_task(parent_id: str, child_data: dict):
+    """Create the first child task from a parent recurring task"""
+    try:
+        # Validate required fields for child task
+        required_fields = ["due_date", "assignee_id"]
+        for field in required_fields:
+            if field not in child_data:
+                raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+        
+        # Call database function to create first child task
+        result = db_service.execute_query("""
+            SELECT create_first_child_task(
+                %(parent_task_id)s,
+                %(child_due_date)s,
+                %(child_assignee_id)s,
+                %(child_priority)s
+            ) as child_task_id;
+        """, {
+            "parent_task_id": parent_id,
+            "child_due_date": child_data.get("due_date"),
+            "child_assignee_id": child_data.get("assignee_id"),
+            "child_priority": child_data.get("priority", "medium")
+        })
+        
+        if result and len(result) > 0:
+            return {
+                "message": "First child task created successfully",
+                "child_task_id": result[0]["child_task_id"],
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to create first child task")
+            
+    except Exception as e:
+        logger.error(f"Error creating first child task: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.get("/api/v1/recurring/{parent_id}/children")
+async def get_child_tasks(parent_id: str):
+    """Get all child tasks for a parent recurring task"""
+    try:
+        children = db_service.execute_query("""
+            SELECT t.*, u.first_name, u.last_name, u.email
+            FROM tasks t
+            LEFT JOIN users u ON t.assignee_id = u.id
+            WHERE t.parent_task_id = %(parent_id)s AND t.is_parent_task = FALSE
+            ORDER BY t.child_instance_number ASC;
+        """, {"parent_id": parent_id})
+        
+        return {
+            "child_tasks": children,
+            "count": len(children) if children else 0,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error fetching child tasks: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.get("/api/v1/recurring/{parent_id}/status")
+async def get_recurring_task_status(parent_id: str):
+    """Get status summary for a recurring parent task"""
+    try:
+        status = db_service.execute_query("""
+            SELECT 
+                p.title as parent_title,
+                p.start_date,
+                p.end_date,
+                p.recurring_frequency,
+                COUNT(c.id) as total_children,
+                COUNT(CASE WHEN c.status = 'completed' THEN 1 END) as completed_children,
+                COUNT(CASE WHEN c.status = 'in-progress' THEN 1 END) as in_progress_children,
+                COUNT(CASE WHEN c.status = 'not-started' THEN 1 END) as pending_children,
+                CASE 
+                    WHEN p.end_date IS NULL THEN 'Infinite'
+                    ELSE EXTRACT(days FROM p.end_date - CURRENT_DATE)::text
+                END as days_remaining
+            FROM tasks p
+            LEFT JOIN tasks c ON p.id = c.parent_task_id AND c.is_parent_task = FALSE
+            WHERE p.id = %(parent_id)s AND p.is_parent_task = TRUE
+            GROUP BY p.id, p.title, p.start_date, p.end_date, p.recurring_frequency;
+        """, {"parent_id": parent_id})
+        
+        if status and len(status) > 0:
+            return {"status": status[0]}
+        else:
+            raise HTTPException(status_code=404, detail="Parent task not found")
+            
+    except Exception as e:
+        logger.error(f"Error fetching recurring task status: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.post("/api/v1/tasks/trigger-recurring")
+async def trigger_recurring_generation():
+    """Manually trigger recurring task generation (now handled by triggers)"""
+    try:
+        # Child task generation is now handled automatically by triggers when tasks are completed
+        # This endpoint is kept for backward compatibility but doesn't need to do anything
+        
+        return {
+            "message": "Recurring task generation is now automatic via triggers",
+            "note": "Child tasks are generated automatically when parent tasks are completed",
+            "timestamp": datetime.now().isoformat()
+        }
+            
+    except Exception as e:
+        logger.error(f"Error in recurring task generation: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.post("/api/v1/scheduler/run-tasks")
@@ -204,17 +353,22 @@ async def run_scheduled_tasks():
 async def login(login_data: LoginRequest):
     """Login endpoint"""
     try:
-        # Find user by email
-        user = db_service.get_user_by_email(login_data.email)
+        # Find user by email or employee_id
+        user = None
+        if '@' in login_data.email:  # Check if it's an email
+            user = db_service.get_user_by_email(login_data.email)
+        else:  # Assume it's an employee_id
+            user = db_service.get_user_by_employee_id(login_data.email)
         
         if not user:
-            raise HTTPException(status_code=401, detail="Invalid email or password")
+            raise HTTPException(status_code=401, detail="Invalid email/employee ID or password")
         
         # For demo purposes, accept any password for any user
         # In production, this should be proper password verification with bcrypt
         if user and user.get('is_active', True):
             user_dict = {
                 "id": str(user['id']),
+                "employee_id": user.get('employee_id'),
                 "email": user['email'],
                 "first_name": user['first_name'],
                 "last_name": user['last_name'],
@@ -231,6 +385,71 @@ async def login(login_data: LoginRequest):
             raise HTTPException(status_code=401, detail="Invalid email or password")
     except Exception as e:
         logger.error(f"Login error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.get("/api/v1/tasks/grouped")
+async def get_grouped_tasks():
+    """Get tasks grouped by parent-child relationships"""
+    try:
+        # Get all parent tasks with their child counts
+        grouped_tasks = db_service.execute_query("""
+            SELECT 
+                p.id as parent_id,
+                p.title as parent_title,
+                p.description as parent_description,
+                p.status as parent_status,
+                p.priority as parent_priority,
+                p.recurring_frequency,
+                p.start_date,
+                p.end_date,
+                p.attachments_required,
+                p.created_at as parent_created_at,
+                d.name as department_name,
+                u.first_name,
+                u.last_name,
+                COUNT(c.id) as child_count,
+                COUNT(CASE WHEN c.status = 'completed' THEN 1 END) as completed_children,
+                COUNT(CASE WHEN c.status = 'in-progress' THEN 1 END) as in_progress_children,
+                COUNT(CASE WHEN c.status = 'not-started' THEN 1 END) as pending_children
+            FROM tasks p
+            LEFT JOIN tasks c ON p.id = c.parent_task_id AND c.is_parent_task = FALSE
+            LEFT JOIN departments d ON p.department_id = d.id
+            LEFT JOIN users u ON p.created_by = u.id
+            WHERE p.is_parent_task = TRUE
+            GROUP BY p.id, p.title, p.description, p.status, p.priority, p.recurring_frequency, 
+                     p.start_date, p.end_date, p.attachments_required, p.created_at, d.name, u.first_name, u.last_name
+            ORDER BY p.created_at DESC;
+        """)
+        
+        # Get child tasks for each parent
+        for parent in grouped_tasks:
+            child_tasks = db_service.execute_query("""
+                SELECT 
+                    c.id,
+                    c.title,
+                    c.status,
+                    c.priority,
+                    c.due_date,
+                    c.completed_date,
+                    c.child_instance_number,
+                    c.created_at,
+                    au.first_name as assignee_first_name,
+                    au.last_name as assignee_last_name,
+                    au.email as assignee_email
+                FROM tasks c
+                LEFT JOIN users au ON c.assignee_id = au.id
+                WHERE c.parent_task_id = %s AND c.is_parent_task = FALSE
+                ORDER BY c.child_instance_number ASC;
+            """, (parent['parent_id'],))
+            parent['children'] = child_tasks if child_tasks else []
+        
+        return {
+            "grouped_tasks": grouped_tasks,
+            "total_parents": len(grouped_tasks),
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error fetching grouped tasks: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/api/v1/tasks")
@@ -301,15 +520,20 @@ async def create_user(user_data: dict):
     """Create a new user"""
     try:
         # Validate required fields
-        required_fields = ['email', 'first_name', 'last_name', 'role']
+        required_fields = ['employee_id', 'email', 'first_name', 'last_name', 'role']
         for field in required_fields:
             if not user_data.get(field):
                 raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
         
-        # Check if user already exists
+        # Check if user already exists by email
         existing_user = db_service.get_user_by_email(user_data['email'])
         if existing_user:
             raise HTTPException(status_code=400, detail="User with this email already exists")
+        
+        # Check if employee_id already exists
+        existing_employee = db_service.get_user_by_employee_id(user_data['employee_id'])
+        if existing_employee:
+            raise HTTPException(status_code=400, detail="Employee ID already exists")
         
         # Create user with default password hash (for demo purposes)
         # In production, this should be a proper password hash
@@ -320,17 +544,22 @@ async def create_user(user_data: dict):
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""
                     INSERT INTO users (
-                        email, password_hash, first_name, last_name, role, department_id, is_active
+                        employee_id, email, password_hash, first_name, last_name, role, department_id, 
+                        reports_to_id, position_id, is_active
                     ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s
-                    ) RETURNING id, email, first_name, last_name, role, department_id, is_active, created_at
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    ) RETURNING id, employee_id, email, first_name, last_name, role, department_id, 
+                               reports_to_id, position_id, is_active, created_at
                 """, (
+                    user_data['employee_id'],
                     user_data['email'],
                     default_password_hash,
                     user_data['first_name'],
                     user_data['last_name'],
                     user_data['role'],
                     user_data.get('department_id'),
+                    user_data.get('reports_to_id'),
+                    user_data.get('position_id'),
                     user_data.get('is_active', True)
                 ))
                 new_user = cur.fetchone()
@@ -390,6 +619,7 @@ async def delete_user(user_id: str):
         logger.error(f"Error deleting user: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+# Department Management Endpoints
 @app.get("/api/v1/departments")
 async def get_departments():
     """Get all departments"""
@@ -398,6 +628,246 @@ async def get_departments():
         return {"departments": departments}
     except Exception as e:
         logger.error(f"Error fetching departments: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.get("/api/v1/departments/{department_id}")
+async def get_department(department_id: str):
+    """Get a specific department by ID"""
+    try:
+        # Validate UUID format
+        import uuid
+        try:
+            uuid.UUID(department_id)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="Department not found")
+        
+        department = db_service.get_department_by_id(department_id)
+        if not department:
+            raise HTTPException(status_code=404, detail="Department not found")
+        return department
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching department: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.post("/api/v1/departments")
+async def create_department(department_data: dict):
+    """Create a new department"""
+    try:
+        # Validate required fields
+        required_fields = ['name']
+        for field in required_fields:
+            if not department_data.get(field):
+                raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+        
+        # Check if department already exists
+        existing_dept = db_service.get_department_by_name(department_data['name'])
+        if existing_dept:
+            raise HTTPException(status_code=400, detail="Department with this name already exists")
+        
+        conn = db_service.get_connection()
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    INSERT INTO departments (name, description, manager_id, parent_department_id)
+                    VALUES (%s, %s, %s, %s)
+                    RETURNING id, name, description, manager_id, created_at, updated_at
+                """, (
+                    department_data['name'],
+                    department_data.get('description', ''),
+                    department_data.get('manager_id'),
+                    department_data.get('parent_department_id')
+                ))
+                new_department = cur.fetchone()
+                conn.commit()
+                return {"department": dict(new_department), "message": "Department created successfully"}
+        finally:
+            conn.close()
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating department: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.put("/api/v1/departments/{department_id}")
+async def update_department(department_id: str, department_data: dict):
+    """Update a department"""
+    try:
+        # Check if department exists
+        existing_department = db_service.get_department_by_id(department_id)
+        if not existing_department:
+            raise HTTPException(status_code=404, detail="Department not found")
+        
+        # Update department
+        success = db_service.update_department(department_id, department_data)
+        if success:
+            updated_department = db_service.get_department_by_id(department_id)
+            return {"department": updated_department, "message": "Department updated successfully"}
+        else:
+            raise HTTPException(status_code=400, detail="No valid fields to update")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating department: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.delete("/api/v1/departments/{department_id}")
+async def delete_department(department_id: str):
+    """Delete a department"""
+    try:
+        # Check if department exists
+        existing_department = db_service.get_department_by_id(department_id)
+        if not existing_department:
+            raise HTTPException(status_code=404, detail="Department not found")
+        
+        # Check if department has users
+        users_in_department = db_service.execute_query(
+            "SELECT COUNT(*) as count FROM users WHERE department_id = %s", 
+            (department_id,)
+        )
+        
+        if users_in_department and users_in_department[0]['count'] > 0:
+            raise HTTPException(
+                status_code=400, 
+                detail="Cannot delete department. Move or delete users first."
+            )
+        
+        # Delete department
+        success = db_service.delete_department(department_id)
+        if success:
+            return {"message": "Department deleted successfully"}
+        else:
+            raise HTTPException(status_code=400, detail="Failed to delete department")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting department: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+# Position Management Endpoints
+@app.get("/api/v1/positions")
+async def get_positions(department_id: str = None):
+    """Get all positions, optionally filtered by department"""
+    try:
+        positions = db_service.get_positions(department_id)
+        return {"positions": positions}
+    except Exception as e:
+        logger.error(f"Error fetching positions: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.get("/api/v1/positions/{position_id}")
+async def get_position(position_id: str):
+    """Get a specific position by ID"""
+    try:
+        position = db_service.get_position_by_id(position_id)
+        if not position:
+            raise HTTPException(status_code=404, detail="Position not found")
+        return position
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching position: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.post("/api/v1/positions")
+async def create_position(position_data: dict):
+    """Create a new position"""
+    try:
+        required_fields = ['name', 'department_id']
+        for field in required_fields:
+            if not position_data.get(field):
+                raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+        
+        new_position = db_service.create_position(position_data)
+        return {"position": new_position, "message": "Position created successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating position: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.put("/api/v1/positions/{position_id}")
+async def update_position(position_id: str, position_data: dict):
+    """Update a position"""
+    try:
+        existing_position = db_service.get_position_by_id(position_id)
+        if not existing_position:
+            raise HTTPException(status_code=404, detail="Position not found")
+        
+        success = db_service.update_position(position_id, position_data)
+        if success:
+            updated_position = db_service.get_position_by_id(position_id)
+            return {"position": updated_position, "message": "Position updated successfully"}
+        else:
+            raise HTTPException(status_code=400, detail="No valid fields to update")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating position: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.delete("/api/v1/positions/{position_id}")
+async def delete_position(position_id: str):
+    """Delete a position"""
+    try:
+        existing_position = db_service.get_position_by_id(position_id)
+        if not existing_position:
+            raise HTTPException(status_code=404, detail="Position not found")
+        
+        success = db_service.delete_position(position_id)
+        if success:
+            return {"message": "Position deleted successfully"}
+        else:
+            raise HTTPException(status_code=400, detail="Failed to delete position")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting position: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+# Hierarchy Management Endpoints
+@app.get("/api/v1/users/{user_id}/hierarchy")
+async def get_user_hierarchy(user_id: str):
+    """Get the reporting hierarchy for a user"""
+    try:
+        hierarchy = db_service.get_user_hierarchy(user_id)
+        return {"hierarchy": hierarchy}
+    except Exception as e:
+        logger.error(f"Error fetching user hierarchy: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.get("/api/v1/users/{user_id}/manageable-users")
+async def get_manageable_users(user_id: str):
+    """Get users that the current user can manage based on hierarchy"""
+    try:
+        users = db_service.get_users_by_reporting_level(user_id)
+        return {"users": users}
+    except Exception as e:
+        logger.error(f"Error fetching manageable users: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.get("/api/v1/departments/{department_id}/hierarchy")
+async def get_department_hierarchy(department_id: str):
+    """Get the department hierarchy including sub-departments"""
+    try:
+        hierarchy = db_service.get_department_hierarchy(department_id)
+        return {"hierarchy": hierarchy}
+    except Exception as e:
+        logger.error(f"Error fetching department hierarchy: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.get("/api/v1/departments/{department_id}/sub-departments")
+async def get_sub_departments(department_id: str):
+    """Get all sub-departments of a parent department"""
+    try:
+        sub_departments = db_service.get_sub_departments(department_id)
+        return {"sub_departments": sub_departments}
+    except Exception as e:
+        logger.error(f"Error fetching sub-departments: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.post("/api/v1/tasks")
@@ -416,11 +886,13 @@ async def create_task(task_data: dict):
             'description': task_data['description'],
             'priority': task_data.get('priority', 'medium'),
             'status': task_data.get('status', 'pending'),
-            'assignee_id': task_data.get('assigned_to'),
+            'assignee_id': task_data.get('assignee') or task_data.get('assigned_to'),  # Handle both field names
             'created_by': '550e8400-e29b-41d4-a716-446655440100',  # Super admin user
-            'due_date': task_data.get('due_date'),
+            'due_date': task_data.get('due_date') or task_data.get('dueDate'),  # Handle both field names
+            'start_date': task_data.get('start_date') or task_data.get('startDate'),  # Handle both field names
+            'end_date': task_data.get('end_date') or task_data.get('endDate'),  # Handle both field names
             'is_recurring': task_data.get('is_recurring', False),
-            'recurring_frequency': task_data.get('recurring_frequency', 'none'),
+            'recurring_frequency': task_data.get('recurring_frequency') or task_data.get('recurringFrequency', 'none'),
             'is_customer_related': task_data.get('is_customer_related', False),
             'customer_name': task_data.get('customer_name')
         }
@@ -436,6 +908,60 @@ async def create_task(task_data: dict):
             task_db_data['department_id'] = task_data['department_id']
         
         task_id = db_service.create_task(task_db_data)
+        
+        # Create notification for the assignee
+        if task_db_data.get('assignee_id'):
+            try:
+                assignee_name = db_service.execute_query("""
+                    SELECT CONCAT(first_name, ' ', last_name) as name
+                    FROM users WHERE id = %s
+                """, (task_db_data['assignee_id'],))
+                
+                assignee_display_name = assignee_name[0]['name'] if assignee_name and len(assignee_name) > 0 else 'User'
+                
+                notification_title = f"New Task Assigned: {task_db_data['title']}"
+                notification_message = f"You have been assigned a new task: {task_db_data['title']}"
+                if task_db_data.get('due_date'):
+                    notification_message += f" (Due: {task_db_data['due_date']})"
+                
+                db_service.create_notification(
+                    user_id=task_db_data['assignee_id'],
+                    title=notification_title,
+                    message=notification_message,
+                    notification_type='info'
+                )
+                logger.info(f"Notification created for assignee {task_db_data['assignee_id']}")
+            except Exception as e:
+                logger.error(f"Failed to create notification for assignee: {e}")
+                # Don't fail the entire operation if notification creation fails
+        
+        # If this is a recurring task with assignee and due date, automatically create first child instance
+        if (task_db_data.get('is_recurring') and 
+            task_db_data.get('assignee_id') and 
+            task_db_data.get('due_date')):
+            try:
+                logger.info(f"Creating first child instance for recurring task {task_id}")
+                result = db_service.execute_query("""
+                    SELECT create_first_child_task(
+                        %(parent_task_id)s,
+                        %(child_due_date)s,
+                        %(child_assignee_id)s,
+                        %(child_priority)s
+                    ) as child_task_id;
+                """, {
+                    "parent_task_id": task_id,
+                    "child_due_date": task_db_data.get('due_date'),
+                    "child_assignee_id": task_db_data.get('assignee_id'),
+                    "child_priority": task_db_data.get('priority', 'medium')
+                })
+                
+                if result and len(result) > 0:
+                    child_task_id = result[0]["child_task_id"]
+                    logger.info(f"First child task created successfully: {child_task_id}")
+            except Exception as e:
+                logger.error(f"Failed to create first child task: {e}")
+                # Don't fail the entire operation if child creation fails
+        
         return {"message": "Task created successfully", "id": str(task_id)}
     except HTTPException:
         raise
@@ -443,10 +969,70 @@ async def create_task(task_data: dict):
         logger.error(f"Error creating task: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-@app.put("/api/v1/tasks/{task_id}")
-async def update_task(task_id: str, task_data: dict):
-    """Update a task"""
+async def validate_task_update_fields(task_data: dict):
+    """Validate task update fields"""
+    # Priority validation
+    if 'priority' in task_data:
+        valid_priorities = ['low', 'medium', 'high', 'urgent', 'critical', 'emergency']
+        if task_data['priority'] not in valid_priorities:
+            raise ValueError(f"Invalid priority. Must be one of: {', '.join(valid_priorities)}")
+    
+    # Status validation
+    if 'status' in task_data:
+        valid_statuses = ['not-started', 'in-progress', 'completed', 'cancelled']
+        if task_data['status'] not in valid_statuses:
+            raise ValueError(f"Invalid status. Must be one of: {', '.join(valid_statuses)}")
+    
+    # Attachments required validation
+    if 'attachments_required' in task_data:
+        valid_attachments = ['none', 'optional', 'required']
+        if task_data['attachments_required'] not in valid_attachments:
+            raise ValueError(f"Invalid attachments_required. Must be one of: {', '.join(valid_attachments)}")
+    
+    # Recurring frequency validation
+    if 'recurring_frequency' in task_data:
+        valid_frequencies = ['daily', 'weekly', 'bi-weekly', 'monthly', 'quarterly', 'annually']
+        if task_data['recurring_frequency'] not in valid_frequencies:
+            raise ValueError(f"Invalid recurring_frequency. Must be one of: {', '.join(valid_frequencies)}")
+    
+    # Date validation
+    if 'due_date' in task_data and task_data['due_date']:
+        try:
+            due_date = datetime.strptime(task_data['due_date'], '%Y-%m-%d').date()
+            if due_date < datetime.now().date():
+                raise ValueError("Due date cannot be in the past")
+        except ValueError as e:
+            if "time data" in str(e):
+                raise ValueError("Invalid due_date format. Use YYYY-MM-DD")
+            raise e
+    
+    if 'start_date' in task_data and task_data['start_date']:
+        try:
+            start_date = datetime.strptime(task_data['start_date'], '%Y-%m-%d').date()
+        except ValueError:
+            raise ValueError("Invalid start_date format. Use YYYY-MM-DD")
+    
+    if 'end_date' in task_data and task_data['end_date']:
+        try:
+            end_date = datetime.strptime(task_data['end_date'], '%Y-%m-%d').date()
+        except ValueError:
+            raise ValueError("Invalid end_date format. Use YYYY-MM-DD")
+    
+    # Cross-field validation
+    if 'start_date' in task_data and 'due_date' in task_data and task_data['start_date'] and task_data['due_date']:
+        start_date = datetime.strptime(task_data['start_date'], '%Y-%m-%d').date()
+        due_date = datetime.strptime(task_data['due_date'], '%Y-%m-%d').date()
+        if start_date > due_date:
+            raise ValueError("Start date cannot be after due date")
+
+@app.patch("/api/v1/tasks/{task_id}")
+async def partial_update_task(task_id: str, task_data: dict):
+    """Partially update a task (PATCH) - only provided fields will be updated"""
     try:
+        # Validate that at least one field is provided
+        if not task_data:
+            raise HTTPException(status_code=400, detail="At least one field must be provided for update")
+        
         # Convert frontend field names to database field names
         task_db_data = {}
         
@@ -458,7 +1044,10 @@ async def update_task(task_id: str, task_data: dict):
             'priority': 'priority',
             'status': 'status',
             'dueDate': 'due_date',          # Frontend sends dueDate
+            'startDate': 'start_date',      # Frontend sends startDate
+            'endDate': 'end_date',          # Frontend sends endDate
             'isRecurring': 'is_recurring',  # Frontend sends isRecurring
+            'recurringFrequency': 'recurring_frequency',  # Frontend sends recurringFrequency
             'isCustomerRelated': 'is_customer_related',  # Frontend sends isCustomerRelated
             'customerName': 'customer_name',  # Frontend sends customerName
             'attachmentsRequired': 'attachments_required'  # Frontend sends attachmentsRequired
@@ -476,11 +1065,18 @@ async def update_task(task_id: str, task_data: dict):
             else:
                 raise HTTPException(status_code=400, detail=f"Department '{task_data['department']}' not found")
         
+        # Validate field values
+        await validate_task_update_fields(task_db_data)
+        
         success = db_service.update_task(task_id, task_db_data)
         if not success:
             raise HTTPException(status_code=404, detail="Task not found")
         
-        return {"message": "Task updated successfully"}
+        return {
+            "message": "Task partially updated successfully",
+            "updated_fields": list(task_db_data.keys()),
+            "timestamp": datetime.now().isoformat()
+        }
     except ValueError as e:
         logger.error(f"Validation error updating task: {e}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -488,15 +1084,240 @@ async def update_task(task_id: str, task_data: dict):
         logger.error(f"Error updating task: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+@app.put("/api/v1/tasks/{task_id}")
+async def full_update_task(task_id: str, task_data: dict):
+    """Fully update a task (PUT) - all provided fields will be updated"""
+    try:
+        # Convert frontend field names to database field names
+        task_db_data = {}
+        
+        # Map frontend fields to database fields
+        field_mapping = {
+            'title': 'title',
+            'description': 'description',
+            'assignee': 'assignee_id',      # Frontend sends assignee ID (UUID)
+            'priority': 'priority',
+            'status': 'status',
+            'dueDate': 'due_date',          # Frontend sends dueDate
+            'startDate': 'start_date',      # Frontend sends startDate
+            'endDate': 'end_date',          # Frontend sends endDate
+            'isRecurring': 'is_recurring',  # Frontend sends isRecurring
+            'recurringFrequency': 'recurring_frequency',  # Frontend sends recurringFrequency
+            'isCustomerRelated': 'is_customer_related',  # Frontend sends isCustomerRelated
+            'customerName': 'customer_name',  # Frontend sends customerName
+            'attachmentsRequired': 'attachments_required'  # Frontend sends attachmentsRequired
+        }
+        
+        for frontend_field, db_field in field_mapping.items():
+            if frontend_field in task_data and task_data[frontend_field] is not None:
+                task_db_data[db_field] = task_data[frontend_field]
+        
+        # Handle department name to ID conversion
+        if 'department' in task_data and task_data['department'] is not None:
+            department_id = db_service.get_department_id_by_name(task_data['department'])
+            if department_id:
+                task_db_data['department_id'] = department_id
+            else:
+                raise HTTPException(status_code=400, detail=f"Department '{task_data['department']}' not found")
+        
+        # Validate field values
+        await validate_task_update_fields(task_db_data)
+        
+        success = db_service.update_task(task_id, task_db_data)
+        if not success:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        return {
+            "message": "Task fully updated successfully",
+            "updated_fields": list(task_db_data.keys()),
+            "timestamp": datetime.now().isoformat()
+        }
+    except ValueError as e:
+        logger.error(f"Validation error updating task: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error updating task: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.patch("/api/v1/tasks/{task_id}/status")
+async def update_task_status(task_id: str, status_data: dict):
+    """Quick status update endpoint with auto-generation logic"""
+    try:
+        if 'status' not in status_data:
+            raise HTTPException(status_code=400, detail="Status field is required")
+        
+        await validate_task_update_fields({'status': status_data['status']})
+        
+        # Update the task status
+        success = db_service.update_task(task_id, {'status': status_data['status']})
+        if not success:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        # If marking as completed, check if this is a child task and trigger next generation
+        if status_data['status'] == 'completed':
+            # Check if this is a child task
+            child_task = db_service.execute_query(
+                "SELECT parent_task_id, assignee_id, priority FROM tasks WHERE id = %s AND is_parent_task = FALSE",
+                (task_id,)
+            )
+            
+            if child_task:
+                parent_id = child_task[0]['parent_task_id']
+                assignee_id = child_task[0]['assignee_id']
+                priority = child_task[0]['priority']
+                
+                # Calculate next due date based on parent's frequency
+                parent_task = db_service.execute_query(
+                    "SELECT recurring_frequency, end_date FROM tasks WHERE id = %s AND is_parent_task = TRUE",
+                    (parent_id,)
+                )
+                
+                if parent_task:
+                    frequency = parent_task[0]['recurring_frequency']
+                    parent_end_date = parent_task[0]['end_date']
+                    
+                    # Calculate next due date
+                    next_due_date = db_service.execute_query(
+                        "SELECT calculate_next_due_date_recurring(CURRENT_DATE, %s, true) as next_date",
+                        (frequency,)
+                    )
+                    
+                    if next_due_date:
+                        next_date = next_due_date[0]['next_date']
+                        
+                        # Check if we're within the parent's end date
+                        if not parent_end_date or next_date <= parent_end_date:
+                            # Generate next child task
+                            new_child_id = db_service.execute_query(
+                                "SELECT generate_next_child_task(%s, %s, %s, %s) as child_id",
+                                (task_id, next_date, assignee_id, priority)
+                            )
+                            
+                            if new_child_id:
+                                logger.info(f"Generated next child task: {new_child_id[0]['child_id']}")
+        
+        return {
+            "message": "Task status updated successfully",
+            "task_id": task_id,
+            "new_status": status_data['status'],
+            "timestamp": datetime.now().isoformat()
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error updating task status: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.patch("/api/v1/tasks/{task_id}/assignee")
+async def update_task_assignee(task_id: str, assignee_data: dict):
+    """Quick assignee update endpoint"""
+    try:
+        if 'assignee' not in assignee_data:
+            raise HTTPException(status_code=400, detail="Assignee field is required")
+        
+        success = db_service.update_task(task_id, {'assignee_id': assignee_data['assignee']})
+        if not success:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        return {
+            "message": "Task assignee updated successfully",
+            "task_id": task_id,
+            "new_assignee": assignee_data['assignee'],
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error updating task assignee: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.patch("/api/v1/tasks/{task_id}/priority")
+async def update_task_priority(task_id: str, priority_data: dict):
+    """Quick priority update endpoint"""
+    try:
+        if 'priority' not in priority_data:
+            raise HTTPException(status_code=400, detail="Priority field is required")
+        
+        await validate_task_update_fields({'priority': priority_data['priority']})
+        
+        success = db_service.update_task(task_id, {'priority': priority_data['priority']})
+        if not success:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        return {
+            "message": "Task priority updated successfully",
+            "task_id": task_id,
+            "new_priority": priority_data['priority'],
+            "timestamp": datetime.now().isoformat()
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error updating task priority: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.patch("/api/v1/tasks/{task_id}/due-date")
+async def update_task_due_date(task_id: str, due_date_data: dict):
+    """Quick due date update endpoint"""
+    try:
+        if 'dueDate' not in due_date_data:
+            raise HTTPException(status_code=400, detail="dueDate field is required")
+        
+        await validate_task_update_fields({'due_date': due_date_data['dueDate']})
+        
+        success = db_service.update_task(task_id, {'due_date': due_date_data['dueDate']})
+        if not success:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        return {
+            "message": "Task due date updated successfully",
+            "task_id": task_id,
+            "new_due_date": due_date_data['dueDate'],
+            "timestamp": datetime.now().isoformat()
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error updating task due date: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 @app.delete("/api/v1/tasks/{task_id}")
 async def delete_task(task_id: str):
-    """Delete a task"""
+    """Delete a task with proper permissions"""
     try:
+        # Get task details first
+        task = db_service.execute_query(
+            "SELECT * FROM tasks WHERE id = %s",
+            (task_id,)
+        )
+        
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        task_data = task[0]
+        
+        # Check if this is a parent task
+        if task_data.get('is_parent_task'):
+            # Check if parent has children
+            children_count = db_service.execute_query(
+                "SELECT COUNT(*) as count FROM tasks WHERE parent_task_id = %s AND is_parent_task = FALSE",
+                (task_id,)
+            )
+            
+            if children_count and children_count[0]['count'] > 0:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Cannot delete parent task. Delete all child tasks first."
+                )
+        
+        # For child tasks, check if user has permission (this should be enhanced with proper auth)
+        # For now, we'll allow deletion but in production, check if user is the creator
+        
         success = db_service.delete_task(task_id)
         if not success:
             raise HTTPException(status_code=404, detail="Task not found")
         
         return {"message": "Task deleted successfully"}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error deleting task: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -715,25 +1536,162 @@ async def update_otp_code(email: str, otp_data: dict):
         logger.error(f"Error updating OTP code: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-@app.get("/api/v1/departments")
-async def get_departments():
-    """Get all departments"""
+@app.post("/api/v1/notifications")
+async def create_notification(notification_data: dict):
+    """Create a new notification"""
     try:
-        departments = db_service.get_departments()
-        return {"departments": departments}
+        # Validate required fields
+        required_fields = ['user_id', 'title', 'message']
+        for field in required_fields:
+            if not notification_data.get(field):
+                raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+        
+        notification_id = db_service.create_notification(
+            user_id=notification_data['user_id'],
+            title=notification_data['title'],
+            message=notification_data['message'],
+            notification_type=notification_data.get('type', 'info')
+        )
+        
+        return {
+            "message": "Notification created successfully",
+            "notification_id": notification_id,
+            "timestamp": datetime.now().isoformat()
+        }
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error fetching departments: {e}")
+        logger.error(f"Error creating notification: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/api/v1/notifications")
-async def get_notifications():
-    """Get all notifications"""
+async def get_notifications(user_id: str = None):
+    """Get notifications for the current user"""
     try:
-        # For now, return empty notifications array
-        # TODO: Implement proper notification fetching based on user authentication
-        return {"notifications": []}
+        if user_id:
+            # Get notifications for specific user
+            result = db_service.get_notifications_by_user(user_id)
+        else:
+            # Get all notifications (in real app, filter by user_id from token)
+            result = db_service.execute_query("""
+                SELECT n.*, u.first_name, u.last_name, u.email
+                FROM notifications n
+                LEFT JOIN users u ON n.user_id = u.id
+                ORDER BY n.created_at DESC
+                LIMIT 50;
+            """)
+        
+        return {
+            "notifications": result,
+            "count": len(result) if result else 0,
+            "timestamp": datetime.now().isoformat()
+        }
     except Exception as e:
         logger.error(f"Error fetching notifications: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.put("/api/v1/notifications/{notification_id}/read")
+async def mark_notification_read(notification_id: str):
+    """Mark a notification as read"""
+    try:
+        result = db_service.execute_query("""
+            UPDATE notifications 
+            SET is_read = TRUE 
+            WHERE id = %(notification_id)s
+            RETURNING id;
+        """, {"notification_id": notification_id})
+        
+        if result and len(result) > 0:
+            return {
+                "message": "Notification marked as read",
+                "notification_id": notification_id,
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            raise HTTPException(status_code=404, detail="Notification not found")
+            
+    except Exception as e:
+        logger.error(f"Error marking notification as read: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.post("/api/v1/execute-sql")
+async def execute_sql_script(sql_data: dict):
+    """Execute SQL script for schema updates"""
+    try:
+        sql_script = sql_data.get("sql", "")
+        if not sql_script:
+            raise HTTPException(status_code=400, detail="SQL script is required")
+        
+        # Parse SQL statements more intelligently to handle functions
+        statements = []
+        current_statement = ""
+        in_function = False
+        dollar_quote_tag = None
+        
+        lines = sql_script.split('\n')
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith('--'):
+                continue
+                
+            current_statement += line + " "
+            
+            # Check for function start
+            if 'CREATE OR REPLACE FUNCTION' in line.upper() or 'CREATE FUNCTION' in line.upper():
+                in_function = True
+                # Extract dollar quote tag if present
+                if '$$' in line:
+                    dollar_quote_tag = '$$'
+                elif '$' in line:
+                    # Look for custom dollar quote tag
+                    import re
+                    match = re.search(r'\$([^$]*)\$', line)
+                    if match:
+                        dollar_quote_tag = f'${match.group(1)}$'
+            
+            # Check for function end
+            if in_function and dollar_quote_tag and dollar_quote_tag in line:
+                if current_statement.strip():
+                    statements.append(current_statement.strip())
+                    current_statement = ""
+                    in_function = False
+                    dollar_quote_tag = None
+            elif not in_function and line.endswith(';'):
+                if current_statement.strip():
+                    statements.append(current_statement.strip().rstrip(';'))
+                    current_statement = ""
+        
+        # Add any remaining statement
+        if current_statement.strip():
+            statements.append(current_statement.strip())
+        
+        results = []
+        for i, statement in enumerate(statements):
+            try:
+                result = db_service.execute_query(statement)
+                results.append({
+                    "statement": i + 1,
+                    "success": True,
+                    "result": result if result else "Success"
+                })
+                logger.info(f"✓ Executed statement {i+1}/{len(statements)}")
+            except Exception as e:
+                results.append({
+                    "statement": i + 1,
+                    "success": False,
+                    "error": str(e)
+                })
+                logger.warning(f"⚠ Statement {i+1} failed: {e}")
+                # Continue with other statements
+        
+        return {
+            "message": f"Executed {len(statements)} statements",
+            "results": results,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error executing SQL script: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 if __name__ == "__main__":

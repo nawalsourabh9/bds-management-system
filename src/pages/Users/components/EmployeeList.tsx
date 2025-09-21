@@ -26,6 +26,7 @@ export function EmployeeList({
             <th className="px-4 py-2 font-medium">Email</th>
             <th className="px-4 py-2 font-medium">Position</th>
             <th className="px-4 py-2 font-medium">Department</th>
+            <th className="px-4 py-2 font-medium">Reports To</th>
             <th className="px-4 py-2 font-medium">Role</th>
             <th className="px-4 py-2 font-medium">Status</th>
             <th className="px-4 py-2 font-medium">Actions</th>
@@ -34,11 +35,12 @@ export function EmployeeList({
         <tbody>
           {employees.map((employee) => (
             <tr key={employee.id} className="excel-row border-b border-border">
-              <td className="px-4 py-2">{employee.employeeId}</td>
+              <td className="px-4 py-2 font-mono text-sm">{employee.employeeId}</td>
               <td className="px-4 py-2">{employee.name}</td>
               <td className="px-4 py-2">{employee.email}</td>
-              <td className="px-4 py-2">{employee.position}</td>
-              <td className="px-4 py-2">{employee.department}</td>
+              <td className="px-4 py-2">{employee.position_name || 'No Position'}</td>
+              <td className="px-4 py-2">{employee.department_name || 'No Department'}</td>
+              <td className="px-4 py-2">{employee.reports_to_name || 'No Manager'}</td>
               <td className="px-4 py-2">{employee.role}</td>
               <td className="px-4 py-2">
                 <span className={`inline-block px-2 py-1 text-xs rounded-full ${

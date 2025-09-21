@@ -1,16 +1,21 @@
 
-import React from "react";
+import React, { useState } from "react";
 import { useTasks } from "@/hooks/use-tasks";
 import { useTaskOperations } from "@/hooks/use-task-operations";
 import { useTaskFilters } from "@/hooks/use-task-filters";
+import { useGroupedTasks } from "@/hooks/use-grouped-tasks";
 import TasksHeader from "@/components/tasks/TasksHeader";
 import TaskFilters from "@/components/tasks/TaskFilters";
 import TasksContent from "@/components/tasks/TasksContent";
 import TaskDialogs from "@/components/tasks/TaskDialogs";
+import { GroupedTaskList } from "@/components/tasks/GroupedTaskList";
+import { RecurringTaskWizard } from "@/components/tasks/RecurringTaskWizard";
 import { useAuth } from "@/hooks/use-auth";
 
 const Tasks = () => {
+  const [taskMode, setTaskMode] = useState<'regular' | 'recurring'>('regular');
   const { data: tasks = [], isLoading } = useTasks();
+  const { groupedTasks, isLoading: isLoadingGrouped } = useGroupedTasks();
   const { employee, isAdmin } = useAuth();
   
   console.log("Current user role:", employee?.role);
@@ -71,50 +76,62 @@ const Tasks = () => {
 
   return (
     <div className="space-y-6">
-      <TasksHeader onCreateTask={() => setIsCreateDialogOpen(true)} />
-
-      <TaskFilters 
-        searchTerm={searchTerm}
-        setSearchTerm={setSearchTerm}
-        statusFilter={statusFilter}
-        setStatusFilter={setStatusFilter}
-        priorityFilter={priorityFilter}
-        setPriorityFilter={setPriorityFilter}
-        departmentFilter={departmentFilter}
-        setDepartmentFilter={setDepartmentFilter}
-        assigneeFilter={assigneeFilter}
-        setAssigneeFilter={setAssigneeFilter}
-        dueDateFilter={dueDateFilter}
-        setDueDateFilter={setDueDateFilter}
-        frequencyFilter={frequencyFilter}
-        setFrequencyFilter={setFrequencyFilter}
-        departments={departments}
-        teamMembers={teamMembers}
+      <TasksHeader 
+        onCreateTask={() => setIsCreateDialogOpen(true)} 
+        taskMode={taskMode}
+        onTaskModeChange={setTaskMode}
       />
 
-      <TasksContent 
-        filteredTasks={filteredTasks}
-        onViewTask={handleStatusUpdate}
-        onEditTask={handleEditTask}
-        onDeleteTask={deleteTask}
-        isAdmin={true} // Give admin capabilities to everyone
-        currentUserId={employee?.id}
-        currentUserPermissions={currentUserPermissions}
-        teamMembers={teamMembers}
-      />
+      {taskMode === 'regular' ? (
+        <>
+          <TaskFilters 
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+            statusFilter={statusFilter}
+            setStatusFilter={setStatusFilter}
+            priorityFilter={priorityFilter}
+            setPriorityFilter={setPriorityFilter}
+            departmentFilter={departmentFilter}
+            setDepartmentFilter={setDepartmentFilter}
+            assigneeFilter={assigneeFilter}
+            setAssigneeFilter={setAssigneeFilter}
+            dueDateFilter={dueDateFilter}
+            setDueDateFilter={setDueDateFilter}
+            frequencyFilter={frequencyFilter}
+            setFrequencyFilter={setFrequencyFilter}
+            departments={departments}
+            teamMembers={teamMembers}
+          />
 
-      <TaskDialogs 
-        isCreateDialogOpen={isCreateDialogOpen}
-        setIsCreateDialogOpen={setIsCreateDialogOpen}
-        isEditDialogOpen={isEditDialogOpen}
-        setIsEditDialogOpen={setIsEditDialogOpen}
-        isStatusUpdateDialogOpen={isStatusUpdateDialogOpen}
-        setIsStatusUpdateDialogOpen={setIsStatusUpdateDialogOpen}
-        currentEditTask={currentEditTask}
-        currentStatusTask={currentStatusTask}
-        onCreateTask={handleCreateTask}
-        onUpdateTask={handleUpdateTask}
-      />
+          <TasksContent 
+            filteredTasks={filteredTasks}
+            onViewTask={handleStatusUpdate}
+            onEditTask={handleEditTask}
+            onDeleteTask={deleteTask}
+            isAdmin={true} // Give admin capabilities to everyone
+            currentUserId={employee?.id}
+            currentUserPermissions={currentUserPermissions}
+            teamMembers={teamMembers}
+          />
+
+          <TaskDialogs 
+            isCreateDialogOpen={isCreateDialogOpen}
+            setIsCreateDialogOpen={setIsCreateDialogOpen}
+            isEditDialogOpen={isEditDialogOpen}
+            setIsEditDialogOpen={setIsEditDialogOpen}
+            isStatusUpdateDialogOpen={isStatusUpdateDialogOpen}
+            setIsStatusUpdateDialogOpen={setIsStatusUpdateDialogOpen}
+            currentEditTask={currentEditTask}
+            currentStatusTask={currentStatusTask}
+            onCreateTask={handleCreateTask}
+            onUpdateTask={handleUpdateTask}
+          />
+        </>
+      ) : (
+        <div className="container mx-auto px-4">
+          <GroupedTaskList />
+        </div>
+      )}
     </div>
   );
 };

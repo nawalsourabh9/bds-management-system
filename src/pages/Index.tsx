@@ -1,224 +1,182 @@
-
-import { CheckCircle2, AlertTriangle, ClipboardList, FileCheck, Gauge, BarChart2, CalendarCheck, UserCheck } from "lucide-react";
+import { CheckCircle2, AlertTriangle, ClipboardList, FileCheck, Gauge, BarChart2, CalendarCheck, UserCheck, TrendingUp, Activity, Users, Clock } from "lucide-react";
 import { StatCard } from "@/components/dashboard/StatCard";
 import TaskList from "@/components/dashboard/TaskList";
 import { QualityMetricsChart } from "@/components/dashboard/QualityMetricsChart";
 import { DocumentsStatus } from "@/components/dashboard/DocumentsStatus";
-import { NotificationDemo } from "@/components/notifications/NotificationDemo";
-// Removed DashboardReportActions import
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { motion } from "framer-motion";
+import { useTasks } from "@/hooks/use-tasks";
+import { Loader2 } from "lucide-react";
 
-// Sample tasks data
-const tasks = [
-  {
-    id: "1",
-    title: "Review Process Flow Diagram for Assembly Line 3",
-    dueDate: "Today",
-    priority: "high" as const,
-    status: "in-progress" as const,
-    assignee: {
-      name: "John Doe",
-      initials: "JD",
-    },
-    department: "Quality",
-  },
-  {
-    id: "2",
-    title: "Update Control Plan for New Component X725",
-    dueDate: "Apr 10, 2025",
-    priority: "medium" as const,
-    status: "in-progress" as const,
-    assignee: {
-      name: "Sarah Miller",
-      initials: "SM",
-    },
-    department: "Engineering",
-  },
-  {
-    id: "3",
-    title: "PPAP Documentation for Supplier ABC",
-    dueDate: "Apr 05, 2025",
-    priority: "high" as const,
-    status: "overdue" as const,
-    assignee: {
-      name: "Robert Johnson",
-      initials: "RJ",
-    },
-    department: "Quality",
-  },
-  {
-    id: "4",
-    title: "Internal Audit - Calibration Process",
-    dueDate: "Apr 15, 2025",
-    priority: "medium" as const,
-    status: "completed" as const,
-    assignee: {
-      name: "Lisa Wang",
-      initials: "LW",
-    },
-    department: "Quality",
-  },
-  {
-    id: "5",
-    title: "Risk Assessment Update for Production Line 2",
-    dueDate: "Apr 12, 2025",
-    priority: "low" as const,
-    status: "in-progress" as const,
-    assignee: {
-      name: "Mike Brown",
-      initials: "MB",
-    },
-    isCustomerRelated: true,
-    customerName: "Acme Corp",
-    department: "Production",
-  },
-];
+export default function Index() {
+  const { tasks, loading, error } = useTasks();
 
-// Sample upcoming audits
-const upcomingAudits = [
-  {
-    id: "a1",
-    title: "Annual ISO 9001:2015 Internal Audit",
-    scheduledDate: "2025-04-20",
-    auditType: "internal" as const,
-    department: "Quality",
-    auditor: "Jane Smith"
-  },
-  {
-    id: "a2",
-    title: "Supplier Quality Assessment - Acme Electronics",
-    scheduledDate: "2025-04-15",
-    auditType: "supplier" as const,
-    department: "Quality",
-    auditor: "Robert Johnson"
-  },
-  {
-    id: "a3",
-    title: "IATF 16949 Surveillance Audit",
-    scheduledDate: "2025-05-10",
-    auditType: "external" as const,
-    department: "Quality",
-    auditor: "External - SGS Certification"
+  if (loading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
   }
-];
 
-const getAuditTypeColor = (type: string): string => {
-  switch (type) {
-    case "internal": return "bg-purple-100 text-purple-800";
-    case "external": return "bg-amber-100 text-amber-800";
-    case "supplier": return "bg-blue-100 text-blue-800";
-    case "customer": return "bg-green-100 text-green-800";
-    case "regulatory": return "bg-red-100 text-red-800";
-    default: return "bg-gray-100 text-gray-800";
+  if (error) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center">
+        <div className="text-center">
+          <AlertTriangle className="h-12 w-12 text-destructive mx-auto mb-4" />
+          <h2 className="text-lg font-semibold text-destructive mb-2">Error Loading Dashboard</h2>
+          <p className="text-muted-foreground">{error}</p>
+        </div>
+      </div>
+    );
   }
-};
 
-const Index = () => {
-  // Count customer-related tasks
-  const customerTasksCount = tasks.filter(task => task.isCustomerRelated).length;
-  const customerTasksUrgent = tasks.filter(task => 
-    task.isCustomerRelated && (task.status === "overdue" || task.priority === "high")
-  ).length;
-  
+  // Calculate stats from real data
+  const totalTasks = tasks.length;
+  const completedTasks = tasks.filter(task => task.status === 'completed').length;
+  const overdueTasks = tasks.filter(task => {
+    if (!task.dueDate) return false;
+    const dueDate = new Date(task.dueDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return dueDate < today && task.status !== 'completed';
+  }).length;
+  const inProgressTasks = tasks.filter(task => task.status === 'in-progress').length;
+
+  // Get recent tasks (limit to 6)
+  const recentTasks = tasks.slice(0, 6);
+
+  // Get upcoming tasks (next 7 days)
+  const upcomingTasks = tasks.filter(task => {
+    if (!task.dueDate) return false;
+    const dueDate = new Date(task.dueDate);
+    const today = new Date();
+    const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+    return dueDate >= today && dueDate <= nextWeek && task.status !== 'completed';
+  }).slice(0, 5);
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground">Welcome to your IATF compliant E-QMS platform</p>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-        <StatCard 
-          title="Tasks Due" 
-          value={8} 
-          description="3 overdue" 
-          icon={ClipboardList} 
-          variant="warning"
-          trend={{ value: 15, positive: false }}
-        />
-        <StatCard 
-          title="Customer Tasks" 
-          value={customerTasksCount} 
-          description={`${customerTasksUrgent} urgent`} 
-          icon={UserCheck} 
-          variant="primary"
-          trend={{ value: 10, positive: true }}
-        />
-        <StatCard 
-          title="Non-Conformances" 
-          value={5} 
-          description="This month" 
-          icon={AlertTriangle} 
-          variant="danger"
-          trend={{ value: 20, positive: true }}
-        />
-        <StatCard 
-          title="Audits Completed" 
-          value={3} 
-          description="2 pending" 
-          icon={CheckCircle2} 
-          variant="success"
-        />
-        <StatCard 
-          title="KPI Achievement" 
-          value="92%" 
-          description="Target: 95%" 
-          icon={Gauge} 
-          variant="default"
-          trend={{ value: 5, positive: true }}
-        />
-      </div>
-
-      <NotificationDemo />
-
-      <div className="grid gap-6 md:grid-cols-6">
-        <div className="md:col-span-4">
-          <QualityMetricsChart />
-        </div>
-        <div className="md:col-span-2">
-          <div className="space-y-6">
-            <DocumentsStatus />
-            {/* Removed DashboardReportActions component */}
-          </div>
+    <div className="space-y-6 p-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-muted-foreground">
+            Welcome back! Here's what's happening with your quality management system.
+          </p>
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-6">
-        <div className="md:col-span-4">
-          <TaskList tasks={tasks} />
-        </div>
-        <div className="md:col-span-2">
+      {/* Stats Cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          title="Total Tasks"
+          value={totalTasks}
+          icon={ClipboardList}
+          description="All active tasks"
+          trend="+12%"
+          trendDirection="up"
+        />
+        <StatCard
+          title="Completed"
+          value={completedTasks}
+          icon={CheckCircle2}
+          description="Tasks completed this period"
+          trend="+8%"
+          trendDirection="up"
+        />
+        <StatCard
+          title="In Progress"
+          value={inProgressTasks}
+          icon={Activity}
+          description="Currently active tasks"
+          trend="+3%"
+          trendDirection="up"
+        />
+        <StatCard
+          title="Overdue"
+          value={overdueTasks}
+          icon={AlertTriangle}
+          description="Tasks past due date"
+          trend={overdueTasks > 0 ? "-2%" : "0%"}
+          trendDirection={overdueTasks > 0 ? "down" : "neutral"}
+          variant={overdueTasks > 0 ? "destructive" : "default"}
+        />
+      </div>
+
+      {/* Main Content Grid */}
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {/* Recent Tasks */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg flex items-center">
-                <CalendarCheck className="h-5 w-5 mr-2 text-purple-600" />
-                Upcoming Audits
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ClipboardList className="h-5 w-5" />
+                Recent Tasks
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {upcomingAudits.map((audit) => (
-                  <div key={audit.id} className="border-b pb-3 last:border-0">
-                    <div className="flex items-center justify-between mb-1">
-                      <h3 className="font-medium text-sm">{audit.title}</h3>
-                      <Badge className={getAuditTypeColor(audit.auditType)} variant="outline">
-                        {audit.auditType.charAt(0).toUpperCase() + audit.auditType.slice(1)}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center justify-between text-sm text-muted-foreground">
-                      <span>{audit.department}</span>
-                      <span>{audit.scheduledDate}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              {recentTasks.length > 0 ? (
+                <TaskList tasks={recentTasks} />
+              ) : (
+                <div className="text-center py-8">
+                  <ClipboardList className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground">No tasks found</p>
+                </div>
+              )}
             </CardContent>
           </Card>
-        </div>
+        </motion.div>
+
+        {/* Upcoming Tasks */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+        >
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CalendarCheck className="h-5 w-5" />
+                Upcoming This Week
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {upcomingTasks.length > 0 ? (
+                <TaskList tasks={upcomingTasks} />
+              ) : (
+                <div className="text-center py-8">
+                  <CalendarCheck className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground">No upcoming tasks</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Documents Status */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+        >
+          <DocumentsStatus />
+        </motion.div>
       </div>
+
+      {/* Quality Metrics Chart */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.3 }}
+      >
+        <QualityMetricsChart />
+      </motion.div>
     </div>
   );
-};
-
-export default Index;
+}

@@ -1,13 +1,15 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { toast } from 'sonner';
+import { API_BASE } from '@/config/api';
 
 export interface Notification {
   id: string;
   title: string;
   message: string;
   type: 'info' | 'success' | 'warning' | 'error';
-  read: boolean;
+  is_read: boolean;
   created_at: string;
+  actionUrl?: string;
 }
 
 interface NotificationsContextType {
@@ -36,15 +38,15 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
     setIsLoading(true);
     try {
       // Fetch notifications via FastAPI
-      const response = await fetch('/api/v1/notifications');
+      const response = await fetch(`${API_BASE}/api/v1/notifications`);
       
       if (!response.ok) {
         throw new Error('Failed to fetch notifications');
       }
       
       const data = await response.json();
-      setNotifications(data);
-      setUnreadCount(data.filter((n: Notification) => !n.read).length);
+      setNotifications(data.notifications || []);
+      setUnreadCount((data.notifications || []).filter((n: Notification) => !n.is_read).length);
     } catch (error) {
       console.error('Error fetching notifications:', error);
     } finally {
@@ -54,7 +56,7 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const markAsRead = async (notificationId: string) => {
     try {
-      const response = await fetch(`/api/v1/notifications/${notificationId}/read`, {
+      const response = await fetch(`${API_BASE}/api/v1/notifications/${notificationId}/read`, {
         method: 'PUT',
       });
       
@@ -63,7 +65,7 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       
       setNotifications(prev => 
-        prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
+        prev.map(n => n.id === notificationId ? { ...n, is_read: true } : n)
       );
       setUnreadCount(prev => Math.max(0, prev - 1));
     } catch (error) {
@@ -73,7 +75,7 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const markAllAsRead = async () => {
     try {
-      const response = await fetch('/api/v1/notifications/read-all', {
+      const response = await fetch(`${API_BASE}/api/v1/notifications/read-all`, {
         method: 'PUT',
       });
       
@@ -81,7 +83,7 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
         throw new Error('Failed to mark all notifications as read');
       }
       
-      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
       setUnreadCount(0);
     } catch (error) {
       console.error('Error marking all notifications as read:', error);
@@ -90,7 +92,7 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const deleteNotification = async (notificationId: string) => {
     try {
-      const response = await fetch(`/api/v1/notifications/${notificationId}`, {
+      const response = await fetch(`${API_BASE}/api/v1/notifications/${notificationId}`, {
         method: 'DELETE',
       });
       
@@ -107,7 +109,7 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const clearAllNotifications = async () => {
     try {
-      const response = await fetch('/api/v1/notifications/clear-all', {
+      const response = await fetch(`${API_BASE}/api/v1/notifications/clear-all`, {
         method: 'DELETE',
       });
       

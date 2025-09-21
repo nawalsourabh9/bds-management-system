@@ -29,8 +29,9 @@ export const useTasks = () => {
             name: item.assignee_name,
             initials: item.assignee_name.split(' ').map((n: string) => n[0]).join('').toUpperCase(),
             department: item.department_name || '',
-            position: '', // We don't have position info in the current API
-            employeeId: item.assignee_employee_id
+            position: item.assignee_position_name || '',
+            employeeId: item.assignee_employee_id || 'Not Set',
+            reportsTo: item.assignee_reports_to_name || 'N/A'
           } : undefined;
 
           // Create clean task object

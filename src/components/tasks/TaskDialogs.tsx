@@ -1,7 +1,8 @@
 
 import React from "react";
 import { Task } from "@/types/task";
-import TaskForm from "./TaskForm";
+import EditTaskDialog from "./EditTaskDialog";
+import UnifiedTaskCreationDialog from "./UnifiedTaskCreationDialog";
 import { 
   Dialog, 
   DialogContent, 
@@ -39,29 +40,18 @@ const TaskDialogs: React.FC<TaskDialogsProps> = ({
   const { handleUpdateTask } = useTaskUpdate();
   return (
     <>
-      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle>Create New Task</DialogTitle>
-          </DialogHeader>
-          <TaskForm onSubmit={onCreateTask} />
-        </DialogContent>
-      </Dialog>
+      <UnifiedTaskCreationDialog
+        isOpen={isCreateDialogOpen}
+        onClose={() => setIsCreateDialogOpen(false)}
+        onCreateTask={onCreateTask}
+      />
 
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle>Edit Task</DialogTitle>
-          </DialogHeader>
-          <TaskForm onSubmit={(task) => {
-            // Extract task ID and updates for the useTaskUpdate hook
-            const { id, ...updates } = task;
-            if (id) {
-              handleUpdateTask(id, updates);
-            }
-          }} initialData={currentEditTask || {}} />
-        </DialogContent>
-      </Dialog>
+      <EditTaskDialog
+        isOpen={isEditDialogOpen}
+        onClose={() => setIsEditDialogOpen(false)}
+        task={currentEditTask}
+        onUpdate={handleUpdateTask}
+      />
 
       {currentStatusTask && (
         <StatusUpdateDialog

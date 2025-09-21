@@ -73,12 +73,14 @@ export const useTaskCreate = (setIsCreateDialogOpen: (isOpen: boolean) => void) 
         priority: taskPayload.priority,
         status: taskPayload.status,
         due_date: taskPayload.due_date,
-        assigned_to: taskPayload.assignee,
-        department_id: null, // TODO: Map department name to ID
+        assignee: taskPayload.assignee,
+        department: taskPayload.department, // Send department name, backend will convert to ID
         is_recurring: taskPayload.is_recurring,
         recurring_frequency: taskPayload.recurring_frequency || "none",
         is_customer_related: taskPayload.is_customer_related,
-        customer_name: taskPayload.customer_name
+        customer_name: taskPayload.customer_name,
+        start_date: taskPayload.start_date,
+        end_date: taskPayload.end_date
       };
 
       const data = await fastapiService.createTask(fastapiPayload);
@@ -92,6 +94,7 @@ export const useTaskCreate = (setIsCreateDialogOpen: (isOpen: boolean) => void) 
 
       // Invalidate queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['grouped-tasks'] });
 
       toast({
         title: "Task Created",

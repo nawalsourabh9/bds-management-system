@@ -13,11 +13,8 @@ import {
 import { 
   Home, 
   ClipboardList,
-  FileText, 
-  AlertTriangle, 
   Users,
-  BarChart2,
-  CalendarCheck,
+  Building2,
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
@@ -33,29 +30,19 @@ const menuItems = [
     path: "/tasks"
   },
   {
-    title: "Documents",
-    icon: FileText,
-    path: "/documents"
-  },
-  {
-    title: "Non-Conformances",
-    icon: AlertTriangle,
-    path: "/non-conformances"
-  },
-  {
-    title: "Audits",
-    icon: CalendarCheck,
-    path: "/audits"
-  },
-  {
-    title: "Analytics",
-    icon: BarChart2,
-    path: "/analytics"
-  },
-  {
     title: "Users",
     icon: Users,
     path: "/users"
+  },
+  {
+    title: "Departments",
+    icon: Building2,
+    path: "/departments"
+  },
+  {
+    title: "Positions",
+    icon: Building2,
+    path: "/positions"
   }
 ];
 
@@ -69,6 +56,7 @@ export function AppSidebar() {
           <h2 className="text-lg font-semibold text-eqms-blue">BDS Manufacturing</h2>
           <p className="text-xs text-muted-foreground">IATF Compliant Quality Management System</p>
         </div>
+        
         <SidebarGroup>
           <SidebarGroupLabel>Management</SidebarGroupLabel>
           <SidebarGroupContent>
@@ -89,6 +77,7 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
       </SidebarContent>
     </ShadcnSidebar>
   );

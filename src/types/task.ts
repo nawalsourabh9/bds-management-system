@@ -29,6 +29,7 @@ export interface Task {
     department: string;
     position: string;
     employeeId?: string;
+    reportsTo?: string;
   };
   attachments?: {
     id: string;

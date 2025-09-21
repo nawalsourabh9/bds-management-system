@@ -131,12 +131,13 @@ const TasksTable: React.FC<TasksTableProps> = ({
       <Card>
         <CardContent className="p-0">
           <div className="rounded-md border overflow-x-auto">
-            <Table className="min-w-[1400px]">
+            <Table className="min-w-[1520px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="border-r min-w-[250px]">Task</TableHead>
                   <TableHead className="border-r min-w-[120px]">Assignee</TableHead>
                   <TableHead className="border-r min-w-[100px]">Department</TableHead>
+                  <TableHead className="border-r min-w-[120px]">Reports To</TableHead>
                   <TableHead className="border-r min-w-[120px]">Due Date</TableHead>
                   <TableHead className="border-r min-w-[80px]">Priority</TableHead>
                   <TableHead className="border-r min-w-[120px]">Status</TableHead>

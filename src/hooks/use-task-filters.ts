@@ -52,7 +52,36 @@ export const useTaskFilters = (tasks: Task[]) => {
   }, [tasks]);
 
   const filteredTasks = useMemo(() => {
-    return tasks.filter(task => {
+    // First, identify main tasks (parent tasks) and all child instances
+    const mainTasks = tasks.filter(task => !task.parentTaskId); // Parent tasks only
+    const childTasks = tasks.filter(task => !!task.parentTaskId); // All child tasks
+    
+    // Group ALL child tasks by parent ID
+    const childTasksByParent = new Map<string, Task[]>();
+    childTasks.forEach(child => {
+      if (child.parentTaskId) {
+        if (!childTasksByParent.has(child.parentTaskId)) {
+          childTasksByParent.set(child.parentTaskId, []);
+        }
+        childTasksByParent.get(child.parentTaskId)!.push(child);
+      }
+    });
+    
+    // Combine main tasks with ALL their child instances
+    const displayTasks: Task[] = [];
+    
+    mainTasks.forEach(mainTask => {
+      // Add the main task
+      displayTasks.push(mainTask);
+      
+      // Add ALL child instances if they exist
+      const childInstances = childTasksByParent.get(mainTask.id) || [];
+      childInstances.sort((a, b) => new Date(a.dueDate || '').getTime() - new Date(b.dueDate || '').getTime()); // Sort by due date
+      displayTasks.push(...childInstances);
+    });
+    
+    // Apply filters to the combined tasks
+    return displayTasks.filter(task => {
       // Search term filter
       const matchesSearch = 
         task.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -98,7 +127,7 @@ export const useTaskFilters = (tasks: Task[]) => {
              matchesPriority && 
              matchesDepartment && 
              matchesAssignee && 
-             matchesDueDate &&
+             matchesDueDate && 
              matchesFrequency;
     });
   }, [tasks, searchTerm, statusFilter, priorityFilter, departmentFilter, assigneeFilter, dueDateFilter, frequencyFilter, parentTasksMap]);

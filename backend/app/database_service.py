@@ -18,6 +18,55 @@ class DatabaseService:
         except Exception as e:
             logger.error(f"Database connection error: {e}")
             raise
+
+    def create_notification(self, user_id: str, title: str, message: str, notification_type: str = 'info'):
+        """Create a new notification"""
+        try:
+            conn = self.get_connection()
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO notifications (user_id, title, message, type, is_read, created_at)
+                    VALUES (%(user_id)s, %(title)s, %(message)s, %(type)s, FALSE, NOW())
+                    RETURNING id;
+                """, {
+                    "user_id": user_id,
+                    "title": title,
+                    "message": message,
+                    "type": notification_type
+                })
+                notification_id = cur.fetchone()[0]
+                conn.commit()
+                return notification_id
+        except Exception as e:
+            logger.error(f"Error creating notification: {e}")
+            raise
+        finally:
+            if conn:
+                conn.close()
+
+    def get_notifications_by_user(self, user_id: str, limit: int = 50):
+        """Get notifications for a specific user"""
+        try:
+            conn = self.get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT 
+                        n.id, n.title, n.message, n.type, n.is_read, n.created_at,
+                        u.first_name, u.last_name, u.email
+                    FROM notifications n
+                    LEFT JOIN users u ON n.user_id = u.id
+                    WHERE n.user_id = %(user_id)s
+                    ORDER BY n.created_at DESC
+                    LIMIT %(limit)s;
+                """, {"user_id": user_id, "limit": limit})
+                notifications = cur.fetchall()
+                return [dict(notification) for notification in notifications]
+        except Exception as e:
+            logger.error(f"Error fetching notifications: {e}")
+            raise
+        finally:
+            if conn:
+                conn.close()
     
     def execute_query(self, query, params=None):
         """Execute a query and return results"""
@@ -39,17 +88,31 @@ class DatabaseService:
                 conn.close()
     
     def get_users(self):
-        """Get all active users"""
+        """Get all active users with department and position information"""
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""
                     SELECT 
-                        id, employee_id, email, first_name, last_name, role, 
-                        department_id, is_active, created_at, updated_at
-                    FROM users 
-                    WHERE is_active = true
-                    ORDER BY created_at DESC
+                        u.id, u.employee_id, u.email, u.first_name, u.last_name, u.role, 
+                        u.department_id, u.is_active, u.created_at, u.updated_at,
+                        u.reports_to_id, u.position_id,
+                        d.name as department_name,
+                        d.parent_department_id,
+                        parent_d.name as parent_department_name,
+                        p.name as position_name,
+                        CASE 
+                            WHEN reports_to.first_name IS NOT NULL AND reports_to.last_name IS NOT NULL 
+                            THEN CONCAT(reports_to.first_name, ' ', reports_to.last_name)
+                            ELSE NULL
+                        END as reports_to_name
+                    FROM users u
+                    LEFT JOIN departments d ON u.department_id = d.id
+                    LEFT JOIN departments parent_d ON d.parent_department_id = parent_d.id
+                    LEFT JOIN positions p ON u.position_id = p.id
+                    LEFT JOIN users reports_to ON u.reports_to_id = reports_to.id
+                    WHERE u.is_active = true
+                    ORDER BY u.role, u.first_name, u.last_name
                 """)
                 users = cur.fetchall()
                 return [dict(user) for user in users]
@@ -67,7 +130,7 @@ class DatabaseService:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""
                     SELECT 
-                        id, email, first_name, last_name, role, 
+                        id, employee_id, email, first_name, last_name, role, 
                         department_id, is_active, created_at, updated_at
                     FROM users 
                     WHERE email = %s AND is_active = true
@@ -76,6 +139,27 @@ class DatabaseService:
                 return dict(user) if user else None
         except Exception as e:
             logger.error(f"Error fetching user by email: {e}")
+            raise
+        finally:
+            if conn:
+                conn.close()
+
+    def get_user_by_employee_id(self, employee_id):
+        """Get user by employee ID"""
+        try:
+            conn = self.get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT 
+                        id, employee_id, email, first_name, last_name, role, 
+                        department_id, is_active, created_at, updated_at
+                    FROM users 
+                    WHERE employee_id = %s AND is_active = true
+                """, (employee_id,))
+                user = cur.fetchone()
+                return dict(user) if user else None
+        except Exception as e:
+            logger.error(f"Error fetching user by employee ID: {e}")
             raise
         finally:
             if conn:
@@ -97,6 +181,13 @@ class DatabaseService:
                         u.email as assignee_email,
                         CONCAT(u.first_name, ' ', u.last_name) as assignee_name,
                         u.employee_id as assignee_employee_id,
+                        -- Assignee position and reports-to information
+                        pos.name as assignee_position_name,
+                        CASE 
+                            WHEN reports_to.first_name IS NOT NULL AND reports_to.last_name IS NOT NULL 
+                            THEN CONCAT(reports_to.first_name, ' ', reports_to.last_name)
+                            ELSE NULL
+                        END as assignee_reports_to_name,
                         -- Department information
                         d.name as department_name,
                         -- Creator information
@@ -104,6 +195,8 @@ class DatabaseService:
                         CONCAT(creator.first_name, ' ', creator.last_name) as created_by_name
                     FROM tasks t
                     LEFT JOIN users u ON t.assignee_id = u.id
+                    LEFT JOIN positions pos ON u.position_id = pos.id
+                    LEFT JOIN users reports_to ON u.reports_to_id = reports_to.id
                     LEFT JOIN departments d ON t.department_id = d.id
                     LEFT JOIN users creator ON t.created_by = creator.id
                     ORDER BY t.created_at DESC
@@ -133,6 +226,13 @@ class DatabaseService:
                         u.email as assignee_email,
                         CONCAT(u.first_name, ' ', u.last_name) as assignee_name,
                         u.employee_id as assignee_employee_id,
+                        -- Assignee position and reports-to information
+                        pos.name as assignee_position_name,
+                        CASE 
+                            WHEN reports_to.first_name IS NOT NULL AND reports_to.last_name IS NOT NULL 
+                            THEN CONCAT(reports_to.first_name, ' ', reports_to.last_name)
+                            ELSE NULL
+                        END as assignee_reports_to_name,
                         -- Department information
                         d.name as department_name,
                         -- Creator information
@@ -140,6 +240,8 @@ class DatabaseService:
                         CONCAT(creator.first_name, ' ', creator.last_name) as created_by_name
                     FROM tasks t
                     LEFT JOIN users u ON t.assignee_id = u.id
+                    LEFT JOIN positions pos ON u.position_id = pos.id
+                    LEFT JOIN users reports_to ON u.reports_to_id = reports_to.id
                     LEFT JOIN departments d ON t.department_id = d.id
                     LEFT JOIN users creator ON t.created_by = creator.id
                     WHERE t.id = %s
@@ -154,17 +256,33 @@ class DatabaseService:
                 conn.close()
     
     def get_departments(self):
-        """Get all departments"""
+        """Get all departments with parent department information and positions"""
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # First get all departments
                 cur.execute("""
                     SELECT 
-                        id, name, description, manager_id, created_at, updated_at
-                    FROM departments 
-                    ORDER BY name
+                        d.id, d.name, d.description, d.manager_id, d.parent_department_id,
+                        d.created_at, d.updated_at,
+                        parent.name as parent_department_name
+                    FROM departments d
+                    LEFT JOIN departments parent ON d.parent_department_id = parent.id
+                    ORDER BY d.name
                 """)
                 departments = cur.fetchall()
+                
+                # For each department, get its positions
+                for dept in departments:
+                    cur.execute("""
+                        SELECT id, name, description, is_active, created_at, updated_at
+                        FROM positions 
+                        WHERE department_id = %s AND is_active = true
+                        ORDER BY name
+                    """, (dept['id'],))
+                    positions = cur.fetchall()
+                    dept['positions'] = [dict(pos) for pos in positions]
+                
                 return [dict(dept) for dept in departments]
         except Exception as e:
             logger.error(f"Error fetching departments: {e}")
@@ -188,6 +306,98 @@ class DatabaseService:
             if conn:
                 conn.close()
     
+    def get_department_by_id(self, department_id: str):
+        """Get department by ID"""
+        try:
+            conn = self.get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT 
+                        id, name, description, manager_id, created_at, updated_at
+                    FROM departments 
+                    WHERE id = %s
+                """, (department_id,))
+                department = cur.fetchone()
+                return dict(department) if department else None
+        except Exception as e:
+            logger.error(f"Error fetching department by ID: {e}")
+            raise
+        finally:
+            if conn:
+                conn.close()
+    
+    def get_department_by_name(self, department_name: str):
+        """Get department by name"""
+        try:
+            conn = self.get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT 
+                        id, name, description, manager_id, created_at, updated_at
+                    FROM departments 
+                    WHERE name = %s
+                """, (department_name,))
+                department = cur.fetchone()
+                return dict(department) if department else None
+        except Exception as e:
+            logger.error(f"Error fetching department by name: {e}")
+            raise
+        finally:
+            if conn:
+                conn.close()
+    
+    def update_department(self, department_id: str, department_data: dict):
+        """Update a department"""
+        try:
+            conn = self.get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Build dynamic update query
+                set_clauses = []
+                values = []
+                
+                for field, value in department_data.items():
+                    if field in ['name', 'description', 'manager_id'] and value is not None:
+                        set_clauses.append(f"{field} = %s")
+                        values.append(value)
+                
+                if not set_clauses:
+                    return False
+                
+                # Add updated_at timestamp
+                set_clauses.append("updated_at = NOW()")
+                values.append(department_id)
+                
+                query = f"""
+                    UPDATE departments 
+                    SET {', '.join(set_clauses)}
+                    WHERE id = %s
+                """
+                
+                cur.execute(query, values)
+                conn.commit()
+                return cur.rowcount > 0
+        except Exception as e:
+            logger.error(f"Error updating department: {e}")
+            raise
+        finally:
+            if conn:
+                conn.close()
+    
+    def delete_department(self, department_id: str):
+        """Delete a department"""
+        try:
+            conn = self.get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("DELETE FROM departments WHERE id = %s", (department_id,))
+                conn.commit()
+                return cur.rowcount > 0
+        except Exception as e:
+            logger.error(f"Error deleting department: {e}")
+            raise
+        finally:
+            if conn:
+                conn.close()
+    
     def create_task(self, task_data):
         """Create a new task"""
         try:
@@ -197,9 +407,10 @@ class DatabaseService:
                     INSERT INTO tasks (
                         title, description, status, priority, department_id,
                         assignee_id, created_by, start_date, due_date,
-                        is_recurring, is_customer_related, customer_name
+                        is_recurring, recurring_frequency, is_customer_related, customer_name,
+                        attachments_required
                     ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     ) RETURNING id
                 """, (
                     task_data.get('title'),
@@ -212,8 +423,10 @@ class DatabaseService:
                     task_data.get('start_date'),
                     task_data.get('due_date'),
                     task_data.get('is_recurring', False),
+                    task_data.get('recurring_frequency', 'none'),
                     task_data.get('is_customer_related', False),
-                    task_data.get('customer_name')
+                    task_data.get('customer_name'),
+                    task_data.get('attachments_required', False)
                 ))
                 task_id = cur.fetchone()['id']
                 conn.commit()
@@ -254,7 +467,7 @@ class DatabaseService:
                     if value is not None and field in [
                         'title', 'description', 'status', 'priority', 
                         'department_id', 'assignee_id', 'start_date', 'due_date',
-                        'is_recurring', 'is_customer_related', 'customer_name'
+                        'is_recurring', 'is_customer_related', 'customer_name', 'attachments_required'
                     ]:
                         update_fields.append(f"{field} = %s")
                         values.append(value)
@@ -335,7 +548,7 @@ class DatabaseService:
                 for field, value in user_data.items():
                     if value is not None and field in [
                         'email', 'first_name', 'last_name', 'role', 
-                        'department_id', 'is_active'
+                        'department_id', 'is_active', 'reports_to_id', 'position_id'
                     ]:
                         update_fields.append(f"{field} = %s")
                         values.append(value)
@@ -436,6 +649,206 @@ class DatabaseService:
             logger.error(f"Error updating OTP code: {e}")
             if conn:
                 conn.rollback()
+            raise
+        finally:
+            if conn:
+                conn.close()
+    
+    # Position Management Methods
+    def get_positions(self, department_id: str = None):
+        """Get all positions, optionally filtered by department"""
+        try:
+            conn = self.get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                if department_id:
+                    cur.execute("""
+                        SELECT p.*, d.name as department_name,
+                               d.parent_department_id,
+                               parent_d.name as parent_department_name
+                        FROM positions p
+                        JOIN departments d ON p.department_id = d.id
+                        LEFT JOIN departments parent_d ON d.parent_department_id = parent_d.id
+                        WHERE p.department_id = %s AND p.is_active = true
+                        ORDER BY p.level DESC, p.name
+                    """, (department_id,))
+                else:
+                    cur.execute("""
+                        SELECT p.*, d.name as department_name,
+                               d.parent_department_id,
+                               parent_d.name as parent_department_name
+                        FROM positions p
+                        JOIN departments d ON p.department_id = d.id
+                        LEFT JOIN departments parent_d ON d.parent_department_id = parent_d.id
+                        WHERE p.is_active = true
+                        ORDER BY d.name, p.level DESC, p.name
+                    """)
+                positions = cur.fetchall()
+                return [dict(pos) for pos in positions]
+        except Exception as e:
+            logger.error(f"Error fetching positions: {e}")
+            raise
+        finally:
+            if conn:
+                conn.close()
+    
+    def get_position_by_id(self, position_id: str):
+        """Get a specific position by ID"""
+        try:
+            conn = self.get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT p.*, d.name as department_name
+                    FROM positions p
+                    JOIN departments d ON p.department_id = d.id
+                    WHERE p.id = %s
+                """, (position_id,))
+                position = cur.fetchone()
+                return dict(position) if position else None
+        except Exception as e:
+            logger.error(f"Error fetching position: {e}")
+            raise
+        finally:
+            if conn:
+                conn.close()
+    
+    def create_position(self, position_data: dict):
+        """Create a new position"""
+        try:
+            conn = self.get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    INSERT INTO positions (name, description, department_id, level)
+                    VALUES (%s, %s, %s, %s)
+                    RETURNING id, name, description, department_id, level, is_active, created_at, updated_at
+                """, (
+                    position_data['name'],
+                    position_data.get('description', ''),
+                    position_data['department_id'],
+                    position_data.get('level', 1)
+                ))
+                new_position = cur.fetchone()
+                conn.commit()
+                return dict(new_position)
+        except Exception as e:
+            logger.error(f"Error creating position: {e}")
+            raise
+        finally:
+            if conn:
+                conn.close()
+    
+    def update_position(self, position_id: str, position_data: dict):
+        """Update a position"""
+        try:
+            conn = self.get_connection()
+            set_clauses = []
+            values = []
+            
+            for key, value in position_data.items():
+                if key in ['name', 'description', 'level'] and value is not None:
+                    set_clauses.append(f"{key} = %s")
+                    values.append(value)
+            
+            if not set_clauses:
+                return False
+            
+            set_clauses.append("updated_at = CURRENT_TIMESTAMP")
+            values.append(position_id)
+            
+            query = f"""
+                UPDATE positions 
+                SET {', '.join(set_clauses)}
+                WHERE id = %s
+            """
+            
+            with conn.cursor() as cur:
+                cur.execute(query, values)
+                conn.commit()
+                return cur.rowcount > 0
+        except Exception as e:
+            logger.error(f"Error updating position: {e}")
+            raise
+        finally:
+            if conn:
+                conn.close()
+    
+    def delete_position(self, position_id: str):
+        """Delete a position"""
+        try:
+            conn = self.get_connection()
+            with conn.cursor() as cur:
+                cur.execute("UPDATE positions SET is_active = false WHERE id = %s", (position_id,))
+                conn.commit()
+                return cur.rowcount > 0
+        except Exception as e:
+            logger.error(f"Error deleting position: {e}")
+            raise
+        finally:
+            if conn:
+                conn.close()
+    
+    # Hierarchy Management Methods
+    def get_user_hierarchy(self, user_id: str):
+        """Get the reporting hierarchy for a user"""
+        try:
+            conn = self.get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT * FROM get_user_hierarchy(%s)", (user_id,))
+                hierarchy = cur.fetchall()
+                return [dict(h) for h in hierarchy]
+        except Exception as e:
+            logger.error(f"Error fetching user hierarchy: {e}")
+            raise
+        finally:
+            if conn:
+                conn.close()
+    
+    def get_users_by_reporting_level(self, user_id: str):
+        """Get users that the current user can manage based on hierarchy"""
+        try:
+            conn = self.get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT * FROM get_users_by_reporting_level(%s)", (user_id,))
+                users = cur.fetchall()
+                return [dict(u) for u in users]
+        except Exception as e:
+            logger.error(f"Error fetching users by reporting level: {e}")
+            raise
+        finally:
+            if conn:
+                conn.close()
+    
+    def get_department_hierarchy(self, department_id: str):
+        """Get the department hierarchy including sub-departments"""
+        try:
+            conn = self.get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT * FROM get_department_hierarchy(%s)", (department_id,))
+                hierarchy = cur.fetchall()
+                return [dict(d) for d in hierarchy]
+        except Exception as e:
+            logger.error(f"Error fetching department hierarchy: {e}")
+            raise
+        finally:
+            if conn:
+                conn.close()
+    
+    def get_sub_departments(self, parent_department_id: str):
+        """Get all sub-departments of a parent department"""
+        try:
+            conn = self.get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT d.*, 
+                           (SELECT COUNT(*) FROM users WHERE department_id = d.id AND is_active = true) as user_count,
+                           (SELECT COUNT(*) FROM departments WHERE parent_department_id = d.id) as sub_department_count
+                    FROM departments d
+                    WHERE d.parent_department_id = %s
+                    ORDER BY d.name
+                """, (parent_department_id,))
+                sub_departments = cur.fetchall()
+                return [dict(dept) for dept in sub_departments]
+        except Exception as e:
+            logger.error(f"Error fetching sub-departments: {e}")
             raise
         finally:
             if conn:

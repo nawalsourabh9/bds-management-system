@@ -45,8 +45,8 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 # Copy nginx configuration template
 COPY nginx.conf /etc/nginx/nginx.conf.template
 
-# Install envsubst (part of gettext package)
-RUN apk add --no-cache gettext
+    # Install envsubst (part of gettext package)
+    RUN apk add --no-cache gettext-libs
 
 # Expose port
 EXPOSE 80

@@ -23,7 +23,7 @@ export function EditEmployeeDialog({ isOpen, setIsOpen, employee, onSubmit, empl
       role: "",
       department: "",
       employeeId: "",
-      position: "",
+      position: undefined,
       status: "Active"
     }
   });
@@ -57,7 +57,7 @@ export function EditEmployeeDialog({ isOpen, setIsOpen, employee, onSubmit, empl
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Employee</DialogTitle>
         </DialogHeader>

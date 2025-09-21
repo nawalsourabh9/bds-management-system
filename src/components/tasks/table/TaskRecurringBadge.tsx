@@ -9,12 +9,12 @@ interface TaskRecurringBadgeProps {
 }
 
 const TaskRecurringBadge: React.FC<TaskRecurringBadgeProps> = ({ task }) => {
-  // Show recurring badge for parent recurring tasks
+  // Show template badge for parent recurring tasks
   if (task.isRecurring && !task.parentTaskId) {
     return (
       <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
         <RotateCcw className="w-3 h-3 mr-1" />
-        Recurring ({task.recurringFrequency})
+        Template ({task.recurringFrequency})
       </Badge>
     );
   }
