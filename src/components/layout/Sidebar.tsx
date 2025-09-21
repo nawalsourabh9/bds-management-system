@@ -15,6 +15,10 @@ import {
   ClipboardList,
   Users,
   Building2,
+  Map,
+  GitBranch,
+  Workflow,
+  Brain,
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
@@ -74,6 +78,58 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Visual Guides</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <Link 
+                    to="/mind-map/organization" 
+                    className={`flex items-center ${location.pathname === '/mind-map/organization' ? 'font-medium text-primary' : ''}`}
+                  >
+                    <Users className="mr-2 h-4 w-4" />
+                    <span>Organization Chart</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <Link 
+                    to="/mind-map/departments" 
+                    className={`flex items-center ${location.pathname === '/mind-map/departments' ? 'font-medium text-primary' : ''}`}
+                  >
+                    <Building2 className="mr-2 h-4 w-4" />
+                    <span>Department Structure</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <Link 
+                    to="/mind-map/tasks" 
+                    className={`flex items-center ${location.pathname === '/mind-map/tasks' ? 'font-medium text-primary' : ''}`}
+                  >
+                    <ClipboardList className="mr-2 h-4 w-4" />
+                    <span>Task Workflow</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <Link 
+                    to="/mind-map/processes" 
+                    className={`flex items-center ${location.pathname === '/mind-map/processes' ? 'font-medium text-primary' : ''}`}
+                  >
+                    <Workflow className="mr-2 h-4 w-4" />
+                    <span>Process Maps</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

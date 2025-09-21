@@ -9,7 +9,7 @@ import { Trash2 } from "lucide-react";
 export const NotificationsList: React.FC = () => {
   const { notifications, markAsRead, markAllAsRead, clearNotifications } = useNotifications();
 
-  if (notifications.length === 0) {
+  if (!notifications || notifications.length === 0) {
     return (
       <div className="p-4 text-center text-muted-foreground">
         <p>No notifications yet</p>
@@ -39,7 +39,7 @@ export const NotificationsList: React.FC = () => {
         </Button>
       </div>
       <ScrollArea className="h-[300px]">
-        {notifications.map((notification) => (
+        {notifications?.map((notification) => (
           <NotificationItem
             key={notification.id}
             notification={notification}
