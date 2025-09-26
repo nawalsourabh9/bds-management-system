@@ -153,24 +153,49 @@ const TasksTable: React.FC<TasksTableProps> = ({
                     </TableCell>
                   </TableRow>
                 ) : (
-                  tasks.map((task) => (
-                    <TaskTableRow 
-                      key={task.id}
-                      task={task}
-                      onViewTask={onViewTask}
-                      onEditTask={onEditTask || (() => {})}
-                      onDeleteTask={(taskId) => {
-                        if (onDeleteTask) {
-                          setTaskToDelete(taskId);
-                        }
-                      }}
-                      isAdmin={isAdmin}
-                      currentUserId={currentUserId}
-                      currentUserPermissions={currentUserPermissions}
-                      teamMembers={convertedTeamMembers}
-                      setViewingDocument={setViewingDocument}
-                    />
-                  ))
+                  (() => {
+                    // Group tasks: parent tasks first, then their children
+                    const parentTasks = tasks.filter(task => !task.parentTaskId);
+                    const childTasks = tasks.filter(task => task.parentTaskId);
+                    
+                    // Create grouped structure
+                    const groupedTasks: Task[] = [];
+                    
+                    parentTasks.forEach(parentTask => {
+                      // Add parent task
+                      groupedTasks.push(parentTask);
+                      
+                      // Add all child tasks for this parent
+                      const children = childTasks.filter(child => child.parentTaskId === parentTask.id);
+                      groupedTasks.push(...children);
+                    });
+                    
+                    // Add any orphaned child tasks (shouldn't happen but just in case)
+                    const orphanedChildren = childTasks.filter(child => 
+                      !parentTasks.some(parent => parent.id === child.parentTaskId)
+                    );
+                    groupedTasks.push(...orphanedChildren);
+                    
+                    return groupedTasks.map((task) => (
+                      <TaskTableRow 
+                        key={task.id}
+                        task={task}
+                        onViewTask={onViewTask}
+                        onEditTask={onEditTask || (() => {})}
+                        onDeleteTask={(taskId) => {
+                          if (onDeleteTask) {
+                            setTaskToDelete(taskId);
+                          }
+                        }}
+                        isAdmin={isAdmin}
+                        currentUserId={currentUserId}
+                        currentUserPermissions={currentUserPermissions}
+                        teamMembers={convertedTeamMembers}
+                        setViewingDocument={setViewingDocument}
+                        allTasks={tasks}
+                      />
+                    ));
+                  })()
                 )}
               </TableBody>
             </Table>

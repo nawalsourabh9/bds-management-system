@@ -176,10 +176,14 @@ class DatabaseService:
                         t.department_id, t.assignee_id, t.created_by,
                         t.start_date, t.due_date, t.completed_date,
                         t.is_recurring, t.recurring_frequency, t.is_customer_related, t.customer_name,
-                        t.customer_email, t.tags, t.created_at, t.updated_at,
+                        t.customer_email, t.tags, t.created_at, t.updated_at, t.parent_task_id,
                         -- Assignee information
                         u.email as assignee_email,
-                        CONCAT(u.first_name, ' ', u.last_name) as assignee_name,
+                        CASE 
+                            WHEN u.first_name IS NOT NULL AND u.last_name IS NOT NULL 
+                            THEN CONCAT(u.first_name, ' ', u.last_name)
+                            ELSE NULL
+                        END as assignee_name,
                         u.employee_id as assignee_employee_id,
                         -- Assignee position and reports-to information
                         pos.name as assignee_position_name,
@@ -221,10 +225,14 @@ class DatabaseService:
                         t.department_id, t.assignee_id, t.created_by,
                         t.start_date, t.due_date, t.completed_date,
                         t.is_recurring, t.recurring_frequency, t.is_customer_related, t.customer_name,
-                        t.customer_email, t.tags, t.created_at, t.updated_at,
+                        t.customer_email, t.tags, t.created_at, t.updated_at, t.parent_task_id,
                         -- Assignee information
                         u.email as assignee_email,
-                        CONCAT(u.first_name, ' ', u.last_name) as assignee_name,
+                        CASE 
+                            WHEN u.first_name IS NOT NULL AND u.last_name IS NOT NULL 
+                            THEN CONCAT(u.first_name, ' ', u.last_name)
+                            ELSE NULL
+                        END as assignee_name,
                         u.employee_id as assignee_employee_id,
                         -- Assignee position and reports-to information
                         pos.name as assignee_position_name,
@@ -408,9 +416,9 @@ class DatabaseService:
                         title, description, status, priority, department_id,
                         assignee_id, created_by, start_date, due_date,
                         is_recurring, recurring_frequency, is_customer_related, customer_name,
-                        attachments_required
+                        attachments_required, is_parent_task, parent_task_id
                     ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     ) RETURNING id
                 """, (
                     task_data.get('title'),
@@ -426,7 +434,9 @@ class DatabaseService:
                     task_data.get('recurring_frequency', 'none'),
                     task_data.get('is_customer_related', False),
                     task_data.get('customer_name'),
-                    task_data.get('attachments_required', False)
+                    task_data.get('attachments_required', False),
+                    task_data.get('is_parent_task', False),
+                    task_data.get('parent_task_id')
                 ))
                 task_id = cur.fetchone()['id']
                 conn.commit()

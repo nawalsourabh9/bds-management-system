@@ -328,6 +328,53 @@ async def trigger_recurring_generation():
         logger.error(f"Error in recurring task generation: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+@app.post("/api/v1/tasks/{task_id}/create-child")
+async def create_child_for_parent(task_id: str, child_data: dict):
+    """Manually create a child task for an existing recurring parent"""
+    try:
+        # Validate required fields
+        if not child_data.get('due_date') or not child_data.get('assignee_id'):
+            raise HTTPException(status_code=400, detail="Missing required fields: due_date and assignee_id")
+        
+        # Check if the parent task exists and is recurring
+        parent_task = db_service.get_task_by_id(task_id)
+        if not parent_task:
+            raise HTTPException(status_code=404, detail="Parent task not found")
+        
+        if not parent_task.get('is_recurring'):
+            raise HTTPException(status_code=400, detail="Parent task is not a recurring task")
+        
+        # Create the child task
+        result = db_service.execute_query("""
+            SELECT create_first_child_task(
+                %(parent_task_id)s,
+                %(child_due_date)s,
+                %(child_assignee_id)s,
+                %(child_priority)s
+            ) as child_task_id;
+        """, {
+            "parent_task_id": task_id,
+            "child_due_date": child_data.get('due_date'),
+            "child_assignee_id": child_data.get('assignee_id'),
+            "child_priority": child_data.get('priority', 'medium')
+        })
+        
+        if result and len(result) > 0:
+            child_task_id = result[0]["child_task_id"]
+            return {
+                "message": "Child task created successfully",
+                "child_task_id": str(child_task_id),
+                "parent_task_id": task_id
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to create child task")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating child task: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 @app.post("/api/v1/scheduler/run-tasks")
 async def run_scheduled_tasks():
     """Manually trigger all scheduled tasks"""
@@ -894,7 +941,8 @@ async def create_task(task_data: dict):
             'is_recurring': task_data.get('is_recurring', False),
             'recurring_frequency': task_data.get('recurring_frequency') or task_data.get('recurringFrequency', 'none'),
             'is_customer_related': task_data.get('is_customer_related', False),
-            'customer_name': task_data.get('customer_name')
+            'customer_name': task_data.get('customer_name'),
+            'is_parent_task': task_data.get('is_recurring', False)  # Set to True for recurring tasks
         }
         
         # Handle department name to ID conversion
@@ -907,60 +955,133 @@ async def create_task(task_data: dict):
         elif 'department_id' in task_data:
             task_db_data['department_id'] = task_data['department_id']
         
+        # For recurring tasks, we need to handle parent + first child differently
+        first_child_data = None
+        if task_db_data.get('is_recurring'):
+            # Store first child instance data before creating parent
+            first_child_data = {
+                'assignee_id': task_db_data.get('assignee_id') or task_data.get('assignee'),  # Handle both field names
+                'due_date': task_db_data.get('due_date') or task_data.get('due_date'),  # Handle both field names
+                'priority': task_db_data.get('priority', 'medium'),
+                'status': task_db_data.get('status', 'not-started'),
+                # Child can override customer info if needed
+                'customer_name': task_data.get('child_customer_name'),
+                'customer_email': task_data.get('child_customer_email'),
+                'is_customer_related': task_data.get('child_is_customer_related', False),
+                'attachments_required': task_data.get('child_attachments_required', False)
+            }
+            
+            # Clear assignee and due date from parent task (these belong to child instances)
+            task_db_data['assignee_id'] = None
+            task_db_data['due_date'] = None
+            task_db_data['status'] = 'not-started'  # Parent tasks don't have status
+            
+            # Keep documents and customer info in parent for inheritance
+            # Parent task will have the default documents and customer info
+        
         task_id = db_service.create_task(task_db_data)
         
-        # Create notification for the assignee
-        if task_db_data.get('assignee_id'):
+        # For recurring tasks, MANDATORY first child task creation
+        if task_db_data.get('is_recurring'):
+            if not first_child_data or not first_child_data.get('assignee_id') or not first_child_data.get('due_date'):
+                raise HTTPException(status_code=400, detail="Recurring tasks must have assignee and due date for first child instance")
+            
             try:
-                assignee_name = db_service.execute_query("""
-                    SELECT CONCAT(first_name, ' ', last_name) as name
-                    FROM users WHERE id = %s
-                """, (task_db_data['assignee_id'],))
-                
-                assignee_display_name = assignee_name[0]['name'] if assignee_name and len(assignee_name) > 0 else 'User'
-                
-                notification_title = f"New Task Assigned: {task_db_data['title']}"
-                notification_message = f"You have been assigned a new task: {task_db_data['title']}"
-                if task_db_data.get('due_date'):
-                    notification_message += f" (Due: {task_db_data['due_date']})"
-                
-                db_service.create_notification(
-                    user_id=task_db_data['assignee_id'],
-                    title=notification_title,
-                    message=notification_message,
-                    notification_type='info'
-                )
-                logger.info(f"Notification created for assignee {task_db_data['assignee_id']}")
-            except Exception as e:
-                logger.error(f"Failed to create notification for assignee: {e}")
-                # Don't fail the entire operation if notification creation fails
-        
-        # If this is a recurring task with assignee and due date, automatically create first child instance
-        if (task_db_data.get('is_recurring') and 
-            task_db_data.get('assignee_id') and 
-            task_db_data.get('due_date')):
-            try:
-                logger.info(f"Creating first child instance for recurring task {task_id}")
-                result = db_service.execute_query("""
-                    SELECT create_first_child_task(
-                        %(parent_task_id)s,
-                        %(child_due_date)s,
-                        %(child_assignee_id)s,
-                        %(child_priority)s
-                    ) as child_task_id;
+                # Store first child instance template
+                db_service.execute_query("""
+                    INSERT INTO child_instance_templates 
+                    (parent_task_id, assignee_id, due_date, priority, status, customer_name, customer_email, is_customer_related, attachments_required)
+                    VALUES (%(parent_task_id)s, %(assignee_id)s, %(due_date)s, %(priority)s, %(status)s, %(customer_name)s, %(customer_email)s, %(is_customer_related)s, %(attachments_required)s)
                 """, {
                     "parent_task_id": task_id,
-                    "child_due_date": task_db_data.get('due_date'),
-                    "child_assignee_id": task_db_data.get('assignee_id'),
-                    "child_priority": task_db_data.get('priority', 'medium')
+                    "assignee_id": first_child_data['assignee_id'],
+                    "due_date": first_child_data['due_date'],
+                    "priority": first_child_data['priority'],
+                    "status": first_child_data['status'],
+                    "customer_name": first_child_data.get('customer_name'),
+                    "customer_email": first_child_data.get('customer_email'),
+                    "is_customer_related": first_child_data.get('is_customer_related', False),
+                    "attachments_required": first_child_data.get('attachments_required', False)
                 })
                 
-                if result and len(result) > 0:
-                    child_task_id = result[0]["child_task_id"]
-                    logger.info(f"First child task created successfully: {child_task_id}")
+                # Create first child task directly using database service
+                logger.info(f"Creating first child instance for recurring task {task_id}")
+                child_task_data = {
+                    'title': f"{task_db_data['title']} ({first_child_data['due_date']})",
+                    'description': task_db_data['description'],
+                    'priority': first_child_data['priority'],
+                    'status': first_child_data['status'],
+                    'assignee_id': first_child_data['assignee_id'],
+                    'created_by': task_db_data['created_by'],
+                    'due_date': first_child_data['due_date'],
+                    'start_date': task_db_data.get('start_date'),
+                    'is_recurring': False,  # Child tasks are not recurring
+                    'recurring_frequency': 'none',
+                    'is_customer_related': first_child_data.get('is_customer_related', task_db_data.get('is_customer_related', False)),
+                    'customer_name': first_child_data.get('customer_name') or task_db_data.get('customer_name'),
+                    'attachments_required': first_child_data.get('attachments_required', task_db_data.get('attachments_required', False)),
+                    'is_parent_task': False,  # Child tasks are not parent tasks
+                    'parent_task_id': task_id,  # Link to parent
+                    'department_id': task_db_data.get('department_id')
+                }
+                
+                child_task_id = db_service.create_task(child_task_data)
+                logger.info(f"First child task created successfully: {child_task_id}")
+                
+                # Create notification for the assignee
+                try:
+                    assignee_name = db_service.execute_query("""
+                        SELECT CONCAT(first_name, ' ', last_name) as name
+                        FROM users WHERE id = %s
+                    """, (first_child_data['assignee_id'],))
+                    
+                    assignee_display_name = assignee_name[0]['name'] if assignee_name and len(assignee_name) > 0 else 'User'
+                    
+                    notification_title = f"New Task Assigned: {task_db_data['title']}"
+                    notification_message = f"You have been assigned a new task: {task_db_data['title']}"
+                    if first_child_data['due_date']:
+                        notification_message += f" (Due: {first_child_data['due_date']})"
+                    
+                    db_service.create_notification(
+                        user_id=first_child_data['assignee_id'],
+                        title=notification_title,
+                        message=notification_message,
+                        notification_type='info'
+                    )
+                    logger.info(f"Notification created for assignee {first_child_data['assignee_id']}")
+                except Exception as notification_error:
+                    logger.error(f"Failed to create notification: {notification_error}")
+                    # Don't fail the entire operation if notification creation fails
+                    
             except Exception as e:
                 logger.error(f"Failed to create first child task: {e}")
-                # Don't fail the entire operation if child creation fails
+                raise HTTPException(status_code=500, detail=f"Failed to create first child task: {str(e)}")
+        else:
+            # For non-recurring tasks, create notification for assignee
+            if task_db_data.get('assignee_id'):
+                try:
+                    assignee_name = db_service.execute_query("""
+                        SELECT CONCAT(first_name, ' ', last_name) as name
+                        FROM users WHERE id = %s
+                    """, (task_db_data['assignee_id'],))
+                    
+                    assignee_display_name = assignee_name[0]['name'] if assignee_name and len(assignee_name) > 0 else 'User'
+                    
+                    notification_title = f"New Task Assigned: {task_db_data['title']}"
+                    notification_message = f"You have been assigned a new task: {task_db_data['title']}"
+                    if task_db_data.get('due_date'):
+                        notification_message += f" (Due: {task_db_data['due_date']})"
+                    
+                    db_service.create_notification(
+                        user_id=task_db_data['assignee_id'],
+                        title=notification_title,
+                        message=notification_message,
+                        notification_type='info'
+                    )
+                    logger.info(f"Notification created for assignee {task_db_data['assignee_id']}")
+                except Exception as e:
+                    logger.error(f"Failed to create notification for assignee: {e}")
+                    # Don't fail the entire operation if notification creation fails
         
         return {"message": "Task created successfully", "id": str(task_id)}
     except HTTPException:
@@ -979,7 +1100,7 @@ async def validate_task_update_fields(task_data: dict):
     
     # Status validation
     if 'status' in task_data:
-        valid_statuses = ['not-started', 'in-progress', 'completed', 'cancelled']
+        valid_statuses = ['not-started', 'pending', 'in-progress', 'under-review', 'on-hold', 'waiting-for-approval', 'blocked', 'overdue', 'completed', 'cancelled']
         if task_data['status'] not in valid_statuses:
             raise ValueError(f"Invalid status. Must be one of: {', '.join(valid_statuses)}")
     
@@ -995,12 +1116,11 @@ async def validate_task_update_fields(task_data: dict):
         if task_data['recurring_frequency'] not in valid_frequencies:
             raise ValueError(f"Invalid recurring_frequency. Must be one of: {', '.join(valid_frequencies)}")
     
-    # Date validation
+    # Date validation - Allow past dates for updates (with warning)
     if 'due_date' in task_data and task_data['due_date']:
         try:
             due_date = datetime.strptime(task_data['due_date'], '%Y-%m-%d').date()
-            if due_date < datetime.now().date():
-                raise ValueError("Due date cannot be in the past")
+            # Note: We allow past dates for task updates, but could add a warning if needed
         except ValueError as e:
             if "time data" in str(e):
                 raise ValueError("Invalid due_date format. Use YYYY-MM-DD")
@@ -1126,6 +1246,78 @@ async def full_update_task(task_id: str, task_data: dict):
         success = db_service.update_task(task_id, task_db_data)
         if not success:
             raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Check if task was marked as completed and is a child task
+        if 'status' in task_db_data and task_db_data['status'] == 'completed':
+            try:
+                
+                # Get the task details to check if it's a child task
+                task_details = db_service.get_task_by_id(task_id)
+                if task_details and task_details.get('parent_task_id'):
+                    logger.info(f"Child task {task_id} completed, checking for parent automation...")
+                    
+                    # Get parent task details
+                    parent_task = db_service.get_task_by_id(task_details['parent_task_id'])
+                    if parent_task and parent_task.get('is_recurring') and parent_task.get('recurring_frequency'):
+                        logger.info(f"Parent task {task_details['parent_task_id']} is recurring, generating next child...")
+                        
+                        # Check if parent task has an end date and if we should continue
+                        parent_end_date = parent_task.get('end_date')
+                        if parent_end_date:
+                            try:
+                                parent_end_date_obj = datetime.fromisoformat(parent_end_date.replace('Z', '+00:00')) if isinstance(parent_end_date, str) else parent_end_date
+                                if datetime.now().date() > parent_end_date_obj.date():
+                                    logger.info(f"Parent task end date {parent_end_date} has passed, not generating new child")
+                                    return {
+                                        "message": "Task fully updated successfully",
+                                        "updated_fields": list(task_db_data.keys()),
+                                        "timestamp": datetime.now().isoformat()
+                                    }
+                            except Exception as e:
+                                logger.error(f"Error parsing parent end date: {e}")
+                        
+                        # Generate next child task using the database function
+                        try:
+                            result = db_service.execute_query("""
+                                SELECT generate_next_child_task(
+                                    %(completed_child_id)s,
+                                    %(next_due_date)s,
+                                    %(next_assignee_id)s,
+                                    %(next_priority)s
+                                ) as child_task_id;
+                            """, {
+                                "completed_child_id": task_id,
+                                "next_due_date": task_details.get('due_date'),  # Use same due date pattern
+                                "next_assignee_id": task_details.get('assignee_id'),  # Use same assignee
+                                "next_priority": task_details.get('priority', 'medium')
+                            })
+                            
+                            if result and len(result) > 0 and result[0]["child_task_id"]:
+                                child_task_id = result[0]["child_task_id"]
+                                logger.info(f"Next child task created successfully: {child_task_id}")
+                                
+                                # Create notification for the assignee
+                                try:
+                                    notification_title = f"New Task Assigned: {parent_task['title']}"
+                                    notification_message = f"A new instance of recurring task '{parent_task['title']}' has been assigned to you."
+                                    
+                                    db_service.create_notification(
+                                        user_id=task_details.get('assignee_id'),
+                                        title=notification_title,
+                                        message=notification_message,
+                                        notification_type='info'
+                                    )
+                                    logger.info(f"Notification created for assignee {task_details.get('assignee_id')}")
+                                except Exception as notification_error:
+                                    logger.error(f"Failed to create notification: {notification_error}")
+                                    
+                        except Exception as generation_error:
+                            logger.error(f"Failed to generate next child task: {generation_error}")
+                            # Don't fail the entire operation if child generation fails
+                            
+            except Exception as e:
+                logger.error(f"Error in task completion automation: {e}")
+                # Don't fail the entire operation if automation fails
         
         return {
             "message": "Task fully updated successfully",

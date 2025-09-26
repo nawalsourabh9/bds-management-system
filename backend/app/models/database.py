@@ -18,10 +18,15 @@ class UserRole(str, enum.Enum):
 
 class TaskStatus(str, enum.Enum):
     not_started = "not-started"
-    in_progress = "in-progress"
-    completed = "completed"
-    overdue = "overdue"
     pending = "pending"
+    in_progress = "in-progress"
+    under_review = "under-review"
+    on_hold = "on-hold"
+    waiting_for_approval = "waiting-for-approval"
+    blocked = "blocked"
+    overdue = "overdue"
+    completed = "completed"
+    cancelled = "cancelled"
 
 class TaskPriority(str, enum.Enum):
     low = "low"
