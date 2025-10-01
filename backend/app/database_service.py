@@ -177,6 +177,7 @@ class DatabaseService:
                         t.start_date, t.due_date, t.completed_date,
                         t.is_recurring, t.recurring_frequency, t.is_customer_related, t.customer_name,
                         t.customer_email, t.tags, t.created_at, t.updated_at, t.parent_task_id,
+                        t.attachments_required,
                         -- Assignee information
                         u.email as assignee_email,
                         CASE 
@@ -226,6 +227,7 @@ class DatabaseService:
                         t.start_date, t.due_date, t.completed_date,
                         t.is_recurring, t.recurring_frequency, t.is_customer_related, t.customer_name,
                         t.customer_email, t.tags, t.created_at, t.updated_at, t.parent_task_id,
+                        t.attachments_required,
                         -- Assignee information
                         u.email as assignee_email,
                         CASE 

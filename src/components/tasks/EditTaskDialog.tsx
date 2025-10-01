@@ -26,8 +26,8 @@ interface EditTaskDialogProps {
 interface DocumentData {
   selected: boolean;
   file: File | null;
-  link?: string;
-  linkType?: 'gdrive' | 'onedrive' | 'dropbox' | 'other';
+  link: string;
+  linkType: 'gdrive' | 'onedrive' | 'dropbox' | 'other';
 }
 
 interface DocumentUploads {
@@ -265,10 +265,11 @@ const EditTaskDialog: React.FC<EditTaskDialogProps> = ({ isOpen, onClose, task, 
             </Select>
           </div>
 
-          {/* Documents */}
-          <div className="space-y-4">
-            <Label>Documents</Label>
-            <DocumentSelector
+          {/* Documents - Only show if not 'none' */}
+          {formData.attachmentsRequired !== 'none' && (
+            <div className="space-y-4">
+              <Label>Documents {formData.attachmentsRequired === 'required' && <span className="text-red-500">*</span>}</Label>
+              <DocumentSelector
               documentUploads={formData.documents}
               onDocumentSelect={(docType, selected) => {
                 setFormData(prev => ({
@@ -308,7 +309,8 @@ const EditTaskDialog: React.FC<EditTaskDialogProps> = ({ isOpen, onClose, task, 
                 }));
               }}
             />
-          </div>
+            </div>
+          )}
 
           {/* Customer Information */}
           <div className="space-y-4">

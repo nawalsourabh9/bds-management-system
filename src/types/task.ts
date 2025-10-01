@@ -8,7 +8,7 @@ export interface Task {
   assignee: string;
   priority: 'low' | 'medium' | 'high' | 'urgent' | 'critical' | 'emergency';
   dueDate: string;
-  status: 'completed' | 'in-progress' | 'overdue' | 'not-started';
+  status: 'not-started' | 'pending' | 'in-progress' | 'under-review' | 'on-hold' | 'blocked' | 'waiting-for-approval' | 'overdue' | 'completed' | 'cancelled';
   createdAt: string;
   isRecurring: boolean;
   isCustomerRelated?: boolean; // Added field for customer tasks

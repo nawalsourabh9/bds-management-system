@@ -1279,17 +1279,9 @@ async def full_update_task(task_id: str, task_data: dict):
                         # Generate next child task using the database function
                         try:
                             result = db_service.execute_query("""
-                                SELECT generate_next_child_task(
-                                    %(completed_child_id)s,
-                                    %(next_due_date)s,
-                                    %(next_assignee_id)s,
-                                    %(next_priority)s
-                                ) as child_task_id;
+                                SELECT generate_next_child_task(%(completed_child_id)s) as child_task_id;
                             """, {
-                                "completed_child_id": task_id,
-                                "next_due_date": task_details.get('due_date'),  # Use same due date pattern
-                                "next_assignee_id": task_details.get('assignee_id'),  # Use same assignee
-                                "next_priority": task_details.get('priority', 'medium')
+                                "completed_child_id": task_id
                             })
                             
                             if result and len(result) > 0 and result[0]["child_task_id"]:
@@ -1381,8 +1373,8 @@ async def update_task_status(task_id: str, status_data: dict):
                         if not parent_end_date or next_date <= parent_end_date:
                             # Generate next child task
                             new_child_id = db_service.execute_query(
-                                "SELECT generate_next_child_task(%s, %s, %s, %s) as child_id",
-                                (task_id, next_date, assignee_id, priority)
+                                "SELECT generate_next_child_task(%s) as child_id",
+                                (task_id,)
                             )
                             
                             if new_child_id:

@@ -64,6 +64,7 @@ interface TaskFormData {
   childDocuments: DocumentUploads;
   childIsCustomerRelated: boolean;
   childCustomerName: string;
+  attachmentsRequired: 'none' | 'optional' | 'required';
 }
 
 interface NewTaskFormProps {
@@ -100,7 +101,8 @@ const NewTaskForm: React.FC<NewTaskFormProps> = ({ taskType, onSubmit, onCancel 
       rulesAndProcedures: { selected: false, file: null, link: '', linkType: 'other' as const }
     },
     childIsCustomerRelated: false,
-    childCustomerName: ''
+    childCustomerName: '',
+    attachmentsRequired: 'none' as 'none' | 'optional' | 'required'
   });
 
   const maxSteps = taskType === 'recurring' ? 2 : 1;
@@ -191,6 +193,22 @@ const NewTaskForm: React.FC<NewTaskFormProps> = ({ taskType, onSubmit, onCancel 
   const handleSubmit = async () => {
     setLoading(true);
     try {
+      // Validate document requirements
+      if (formData.attachmentsRequired === 'required') {
+        const hasParentDocuments = Object.values(formData.parentDocuments).some(doc => doc.selected && (doc.file || doc.link));
+        const hasChildDocuments = Object.values(formData.childDocuments).some(doc => doc.selected && (doc.file || doc.link));
+        
+        if (!hasParentDocuments && !hasChildDocuments) {
+          toast({
+            title: "Document Required",
+            description: "At least one document must be uploaded when 'Required' is selected.",
+            variant: "destructive"
+          });
+          setLoading(false);
+          return;
+        }
+      }
+
       // Find the selected employee to get their department information
       const selectedEmployee = employees.find(emp => emp.id === formData.assignee);
       
@@ -209,7 +227,7 @@ const NewTaskForm: React.FC<NewTaskFormProps> = ({ taskType, onSubmit, onCancel 
         // Parent-level data (stored in parent task for inheritance)
         is_customer_related: taskType === 'recurring' ? formData.parentIsCustomerRelated : formData.childIsCustomerRelated,
         customer_name: taskType === 'recurring' ? formData.parentCustomerName : formData.childCustomerName,
-        attachments_required: false,
+        attachments_required: formData.attachmentsRequired,
         
         // For one-time tasks, use child data directly
         assignee: taskType === 'one-time' ? formData.assignee : undefined,
@@ -222,7 +240,7 @@ const NewTaskForm: React.FC<NewTaskFormProps> = ({ taskType, onSubmit, onCancel 
           child_customer_name: formData.childCustomerName || null,
           child_customer_email: null,
           child_is_customer_related: formData.childIsCustomerRelated,
-          child_attachments_required: false
+          child_attachments_required: formData.attachmentsRequired
         })
       };
 
@@ -432,10 +450,29 @@ const NewTaskForm: React.FC<NewTaskFormProps> = ({ taskType, onSubmit, onCancel 
               </div>
             )}
 
-            {/* Documents */}
+            {/* Document Requirements */}
             <div className="space-y-2">
-              <Label>Documents</Label>
-              <DocumentSelector
+              <Label>Document Requirements</Label>
+              <Select
+                value={formData.attachmentsRequired}
+                onValueChange={(value) => setFormData(prev => ({ ...prev, attachmentsRequired: value as 'none' | 'optional' | 'required' }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None - No documents required</SelectItem>
+                  <SelectItem value="optional">Optional - Documents can be uploaded</SelectItem>
+                  <SelectItem value="required">Required - Documents must be uploaded</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Documents - Only show if not 'none' */}
+            {formData.attachmentsRequired !== 'none' && (
+              <div className="space-y-2">
+                <Label>Documents {formData.attachmentsRequired === 'required' && <span className="text-red-500">*</span>}</Label>
+                <DocumentSelector
                 documentUploads={formData.parentDocuments}
                 onDocumentSelect={(docType, selected) => {
                   setFormData(prev => ({
@@ -465,7 +502,8 @@ const NewTaskForm: React.FC<NewTaskFormProps> = ({ taskType, onSubmit, onCancel 
                   handleDocumentLinkUpdate(docType, link, linkType, true);
                 }}
               />
-            </div>
+              </div>
+            )}
 
             {/* Customer Related */}
             <div className="flex items-center space-x-2">
@@ -552,10 +590,11 @@ const NewTaskForm: React.FC<NewTaskFormProps> = ({ taskType, onSubmit, onCancel 
               </Popover>
             </div>
 
-            {/* Documents */}
-            <div className="space-y-2">
-              <Label>Override Documents (Optional)</Label>
-              <DocumentSelector
+            {/* Documents - Only show if not 'none' */}
+            {formData.attachmentsRequired !== 'none' && (
+              <div className="space-y-2">
+                <Label>Override Documents (Optional) {formData.attachmentsRequired === 'required' && <span className="text-red-500">*</span>}</Label>
+                <DocumentSelector
                 documentUploads={formData.childDocuments}
                 onDocumentSelect={(docType, selected) => {
                   setFormData(prev => ({
@@ -585,7 +624,8 @@ const NewTaskForm: React.FC<NewTaskFormProps> = ({ taskType, onSubmit, onCancel 
                   handleDocumentLinkUpdate(docType, link, linkType, false);
                 }}
               />
-            </div>
+              </div>
+            )}
 
             {/* Customer Related (Override Parent) */}
             <div className="flex items-center space-x-2">

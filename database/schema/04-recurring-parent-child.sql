@@ -144,16 +144,24 @@ DECLARE
     new_child_id UUID;
     next_instance_number INTEGER;
 BEGIN
-    -- Get completed child task and its parent
-    SELECT c.*, p.* INTO child_record, parent_record
-    FROM tasks c
-    JOIN tasks p ON c.parent_task_id = p.id
-    WHERE c.id = completed_child_task_id 
-    AND c.is_parent_task = FALSE
-    AND p.is_parent_task = TRUE;
-    
+    -- Get completed child task
+    SELECT * INTO child_record
+    FROM tasks
+    WHERE id = completed_child_task_id
+    AND is_parent_task = FALSE;
+
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'Child task or parent task not found';
+        RAISE EXCEPTION 'Completed child task not found: %', completed_child_task_id;
+    END IF;
+
+    -- Get its parent
+    SELECT * INTO parent_record
+    FROM tasks
+    WHERE id = child_record.parent_task_id
+    AND is_parent_task = TRUE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Parent task not found for child: %', completed_child_task_id;
     END IF;
     
     -- Check if parent task has end date and if we should continue
