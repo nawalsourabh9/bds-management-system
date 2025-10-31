@@ -58,6 +58,7 @@ export default function DepartmentsPage() {
     name: '',
     description: '',
     manager_id: '',
+    parent_department_id: '',
     has_sub_department: false,
     sub_department_name: '',
   });
@@ -166,32 +167,49 @@ export default function DepartmentsPage() {
 
   const handleCreateDepartment = async () => {
     try {
-      // Create main department first
-      const mainDeptData = {
-        name: formData.name,
-        description: formData.description,
-        manager_id: formData.manager_id || null,
-      };
-      
-      const mainDepartment = await fastapiService.createDepartment(mainDeptData);
-      
-      // If sub-department is requested, create it
-      if (formData.has_sub_department && formData.sub_department_name) {
+      // If parent_department_id is provided, this is a sub-department
+      if (formData.parent_department_id) {
         const subDeptData = {
-          name: formData.sub_department_name,
-          description: `Sub-department of ${formData.name}`,
+          name: formData.name,
+          description: formData.description,
           manager_id: formData.manager_id || null,
-          parent_department_id: mainDepartment.id,
+          parent_department_id: formData.parent_department_id,
         };
         await fastapiService.createDepartment(subDeptData);
+        
+        toast({
+          title: 'Success',
+          description: 'Sub-department created successfully',
+        });
+      } else {
+        // Create main department first
+        const mainDeptData = {
+          name: formData.name,
+          description: formData.description,
+          manager_id: formData.manager_id || null,
+        };
+        
+        const mainDepartment = await fastapiService.createDepartment(mainDeptData);
+        
+        // If sub-department is requested, create it
+        if (formData.has_sub_department && formData.sub_department_name) {
+          const subDeptData = {
+            name: formData.sub_department_name,
+            description: `Sub-department of ${formData.name}`,
+            manager_id: formData.manager_id || null,
+            parent_department_id: mainDepartment.id,
+          };
+          await fastapiService.createDepartment(subDeptData);
+        }
+        
+        toast({
+          title: 'Success',
+          description: formData.has_sub_department 
+            ? 'Department and sub-department created successfully'
+            : 'Department created successfully',
+        });
       }
       
-      toast({
-        title: 'Success',
-        description: formData.has_sub_department 
-          ? 'Department and sub-department created successfully'
-          : 'Department created successfully',
-      });
       setIsCreateDialogOpen(false);
       resetForm();
       fetchDepartments();
@@ -208,11 +226,12 @@ export default function DepartmentsPage() {
     if (!editingDepartment) return;
 
     try {
-      // Update main department
+      // Update department
       const updateData = {
         name: formData.name,
         description: formData.description,
         manager_id: formData.manager_id || null,
+        parent_department_id: formData.parent_department_id || null,
       };
       
       await fastapiService.updateDepartment(editingDepartment.id, updateData);
@@ -279,6 +298,7 @@ export default function DepartmentsPage() {
       name: department.name,
       description: department.description || '',
       manager_id: department.manager_id || '',
+      parent_department_id: department.parent_department_id || '',
       has_sub_department: department.has_sub_department || false,
       sub_department_name: department.sub_department_name || '',
     });
@@ -290,6 +310,7 @@ export default function DepartmentsPage() {
       name: '',
       description: '',
       manager_id: '',
+      parent_department_id: '',
       has_sub_department: false,
       sub_department_name: '',
     });
@@ -368,6 +389,32 @@ export default function DepartmentsPage() {
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
+                <Label htmlFor="parent_department">Parent Department (Optional)</Label>
+                <Select 
+                  value={formData.parent_department_id} 
+                  onValueChange={(value) => setFormData({ ...formData, parent_department_id: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select parent department (leave empty for main department)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">None (Main Department)</SelectItem>
+                    {departments
+                      .filter(dept => !dept.parent_department_id)
+                      .map((dept) => (
+                        <SelectItem key={dept.id} value={dept.id}>
+                          {dept.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500">
+                  {formData.parent_department_id 
+                    ? 'This will create a sub-department'
+                    : 'This will create a main department'}
+                </p>
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="name">Department Name</Label>
                 <Input
                   id="name"
@@ -384,10 +431,13 @@ export default function DepartmentsPage() {
                     checked={formData.has_sub_department}
                     onChange={(e) => setFormData({ ...formData, has_sub_department: e.target.checked })}
                     className="rounded"
+                    disabled={!!formData.parent_department_id}
                   />
-                  <Label htmlFor="has_sub_department">Has Sub-Department</Label>
+                  <Label htmlFor="has_sub_department" className={formData.parent_department_id ? 'text-gray-400' : ''}>
+                    Has Sub-Department (only for main departments)
+                  </Label>
                 </div>
-                {formData.has_sub_department && (
+                {formData.has_sub_department && !formData.parent_department_id && (
                   <div className="space-y-2">
                     <Label htmlFor="sub_department_name">Sub-Department Name</Label>
                     <Input
@@ -662,6 +712,32 @@ export default function DepartmentsPage() {
               />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="edit_parent_department">Parent Department</Label>
+              <Select 
+                value={formData.parent_department_id || ''} 
+                onValueChange={(value) => setFormData({ ...formData, parent_department_id: value || '' })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select parent department (leave empty for main department)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">None (Main Department)</SelectItem>
+                  {departments
+                    .filter(dept => !dept.parent_department_id && dept.id !== editingDepartment?.id)
+                    .map((dept) => (
+                      <SelectItem key={dept.id} value={dept.id}>
+                        {dept.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500">
+                {formData.parent_department_id 
+                  ? 'This department is a sub-department'
+                  : 'This is a main department'}
+              </p>
+            </div>
+            <div className="space-y-2">
               <div className="flex items-center space-x-2">
                 <input
                   type="checkbox"
@@ -669,10 +745,13 @@ export default function DepartmentsPage() {
                   checked={formData.has_sub_department}
                   onChange={(e) => setFormData({ ...formData, has_sub_department: e.target.checked })}
                   className="rounded"
+                  disabled={!!formData.parent_department_id}
                 />
-                <Label htmlFor="edit_has_sub_department">Has Sub-Department</Label>
+                <Label htmlFor="edit_has_sub_department" className={formData.parent_department_id ? 'text-gray-400' : ''}>
+                  Has Sub-Department (only for main departments)
+                </Label>
               </div>
-              {formData.has_sub_department && (
+              {formData.has_sub_department && !formData.parent_department_id && (
                 <div className="space-y-2">
                   <Label htmlFor="edit_sub_department_name">Sub-Department Name</Label>
                   <Input
