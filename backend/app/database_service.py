@@ -533,8 +533,9 @@ class DatabaseService:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""
                     SELECT 
-                        u.id, u.email, u.first_name, u.last_name, u.role, 
+                        u.id, u.employee_id, u.email, u.first_name, u.last_name, u.role, 
                         u.department_id, u.is_active, u.created_at, u.updated_at,
+                        u.reports_to_id, u.position_id,
                         d.name as department_name
                     FROM users u
                     LEFT JOIN departments d ON u.department_id = d.id
