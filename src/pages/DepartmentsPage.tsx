@@ -189,7 +189,8 @@ export default function DepartmentsPage() {
           manager_id: formData.manager_id || null,
         };
         
-        const mainDepartment = await fastapiService.createDepartment(mainDeptData);
+        const mainDeptResp = await fastapiService.createDepartment(mainDeptData);
+        const mainDepartment = (mainDeptResp && mainDeptResp.department) ? mainDeptResp.department : mainDeptResp;
         
         // If sub-department is requested, create it
         if (formData.has_sub_department && formData.sub_department_name) {
@@ -197,7 +198,7 @@ export default function DepartmentsPage() {
             name: formData.sub_department_name,
             description: `Sub-department of ${formData.name}`,
             manager_id: formData.manager_id || null,
-            parent_department_id: mainDepartment.id,
+            parent_department_id: mainDepartment?.id,
           };
           await fastapiService.createDepartment(subDeptData);
         }
@@ -391,14 +392,14 @@ export default function DepartmentsPage() {
               <div className="space-y-2">
                 <Label htmlFor="parent_department">Parent Department (Optional)</Label>
                 <Select 
-                  value={formData.parent_department_id} 
-                  onValueChange={(value) => setFormData({ ...formData, parent_department_id: value })}
+                  value={formData.parent_department_id || 'none'} 
+                  onValueChange={(value) => setFormData({ ...formData, parent_department_id: value === 'none' ? '' : value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select parent department (leave empty for main department)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">None (Main Department)</SelectItem>
+                    <SelectItem value="none">None (Main Department)</SelectItem>
                     {departments
                       .filter(dept => !dept.parent_department_id)
                       .map((dept) => (
@@ -714,14 +715,14 @@ export default function DepartmentsPage() {
             <div className="space-y-2">
               <Label htmlFor="edit_parent_department">Parent Department</Label>
               <Select 
-                value={formData.parent_department_id || ''} 
-                onValueChange={(value) => setFormData({ ...formData, parent_department_id: value || '' })}
+                value={formData.parent_department_id || 'none'} 
+                onValueChange={(value) => setFormData({ ...formData, parent_department_id: value === 'none' ? '' : value })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select parent department (leave empty for main department)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None (Main Department)</SelectItem>
+                  <SelectItem value="none">None (Main Department)</SelectItem>
                   {departments
                     .filter(dept => !dept.parent_department_id && dept.id !== editingDepartment?.id)
                     .map((dept) => (

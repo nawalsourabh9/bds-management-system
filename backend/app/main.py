@@ -29,6 +29,14 @@ try:
 except ImportError:
     SCHEDULER_AVAILABLE = False
 
+# Helper function to convert attachments_required string to boolean
+def parse_attachments_required(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in ('required', 'yes', 'true')
+    return False
+
 app = FastAPI(
     title="BDS Management System",
     description="Business Document System with QMS",
@@ -945,7 +953,8 @@ async def create_task(task_data: dict):
             'recurring_frequency': task_data.get('recurring_frequency') or task_data.get('recurringFrequency', 'none'),
             'is_customer_related': task_data.get('is_customer_related', False),
             'customer_name': task_data.get('customer_name'),
-            'is_parent_task': task_data.get('is_recurring', False)  # Set to True for recurring tasks
+            'is_parent_task': task_data.get('is_recurring', False),  # Set to True for recurring tasks
+            'attachments_required': parse_attachments_required(task_data.get('attachments_required', False))
         }
         
         # Handle department name to ID conversion
@@ -971,7 +980,7 @@ async def create_task(task_data: dict):
                 'customer_name': task_data.get('child_customer_name'),
                 'customer_email': task_data.get('child_customer_email'),
                 'is_customer_related': task_data.get('child_is_customer_related', False),
-                'attachments_required': task_data.get('child_attachments_required', False)
+                'attachments_required': parse_attachments_required(task_data.get('child_attachments_required', False))
             }
             
             # Clear assignee and due date from parent task (these belong to child instances)
@@ -1178,7 +1187,11 @@ async def partial_update_task(task_id: str, task_data: dict):
         
         for frontend_field, db_field in field_mapping.items():
             if frontend_field in task_data and task_data[frontend_field] is not None:
-                task_db_data[db_field] = task_data[frontend_field]
+                # Special handling for attachments_required to convert string to boolean
+                if frontend_field == 'attachmentsRequired':
+                    task_db_data[db_field] = parse_attachments_required(task_data[frontend_field])
+                else:
+                    task_db_data[db_field] = task_data[frontend_field]
         
         # Handle department name to ID conversion
         if 'department' in task_data and task_data['department'] is not None:
@@ -1233,7 +1246,11 @@ async def full_update_task(task_id: str, task_data: dict):
         
         for frontend_field, db_field in field_mapping.items():
             if frontend_field in task_data and task_data[frontend_field] is not None:
-                task_db_data[db_field] = task_data[frontend_field]
+                # Special handling for attachments_required to convert string to boolean
+                if frontend_field == 'attachmentsRequired':
+                    task_db_data[db_field] = parse_attachments_required(task_data[frontend_field])
+                else:
+                    task_db_data[db_field] = task_data[frontend_field]
         
         # Handle department name to ID conversion
         if 'department' in task_data and task_data['department'] is not None:

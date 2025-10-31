@@ -175,7 +175,9 @@ class DatabaseService:
                     SELECT 
                         t.id, t.title, t.description, t.status, t.priority,
                         t.department_id, t.assignee_id, t.created_by,
-                        t.start_date, t.due_date, t.completed_date,
+                        t.start_date,
+                        to_char(t.due_date, 'YYYY-MM-DD') as due_date,
+                        t.completed_date,
                         t.is_recurring, t.recurring_frequency, t.is_customer_related, t.customer_name,
                         t.customer_email, t.tags, t.created_at, t.updated_at, t.parent_task_id,
                         t.attachments_required,
@@ -451,11 +453,11 @@ class DatabaseService:
                 cur.execute("""
                     INSERT INTO tasks (
                         id, title, description, status, priority, department_id,
-                        assignee_id, created_by, start_date, due_date,
+                        assignee_id, created_by, start_date, due_date, end_date,
                         is_recurring, recurring_frequency, is_customer_related, customer_name,
                         attachments_required, is_parent_task, parent_task_id
                     ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     ) RETURNING id
                 """, (
                     str(uuid.uuid4()),
@@ -468,6 +470,7 @@ class DatabaseService:
                     task_data.get('created_by'),
                     task_data.get('start_date'),
                     task_data.get('due_date'),
+                    task_data.get('end_date'),
                     task_data.get('is_recurring', False),
                     task_data.get('recurring_frequency', 'none'),
                     task_data.get('is_customer_related', False),
@@ -514,7 +517,7 @@ class DatabaseService:
                 for field, value in task_data.items():
                     if value is not None and field in [
                         'title', 'description', 'status', 'priority', 
-                        'department_id', 'assignee_id', 'start_date', 'due_date',
+                        'department_id', 'assignee_id', 'start_date', 'due_date', 'end_date',
                         'is_recurring', 'is_customer_related', 'customer_name', 'attachments_required'
                     ]:
                         update_fields.append(f"{field} = %s")

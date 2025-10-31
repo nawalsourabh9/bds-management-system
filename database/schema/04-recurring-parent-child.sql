@@ -194,8 +194,9 @@ BEGIN
         department_id,
         assignee_id,
         created_by,
-        due_date,
         start_date,
+        due_date,
+        end_date,
         parent_task_id,
         is_parent_task,
         child_instance_number,
@@ -214,8 +215,9 @@ BEGIN
         parent_record.department_id,
         child_record.assignee_id, -- Use same assignee as previous child
         parent_record.created_by,
-        next_due_date,
         CURRENT_DATE,
+        next_due_date,
+        NULL, -- Child tasks don't have end_date
         parent_record.id,
         FALSE,
         next_instance_number,

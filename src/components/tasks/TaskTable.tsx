@@ -130,19 +130,19 @@ const TasksTable: React.FC<TasksTableProps> = ({
     <>
       <Card>
         <CardContent className="p-0">
-          <div className="rounded-md border overflow-x-auto">
-            <Table className="min-w-[1520px]">
+          <div className="rounded-md border">
+            <Table className="w-full">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="border-r min-w-[250px]">Task</TableHead>
-                  <TableHead className="border-r min-w-[120px]">Assignee</TableHead>
-                  <TableHead className="border-r min-w-[100px]">Department</TableHead>
-                  <TableHead className="border-r min-w-[120px]">Reports To</TableHead>
-                  <TableHead className="border-r min-w-[120px]">Due Date</TableHead>
-                  <TableHead className="border-r min-w-[80px]">Priority</TableHead>
-                  <TableHead className="border-r min-w-[120px]">Status</TableHead>
-                  <TableHead className="border-r min-w-[200px]">Documents</TableHead>
-                  <TableHead className="min-w-[200px]">Actions</TableHead>
+                  <TableHead className="border-r">Task</TableHead>
+                  <TableHead className="border-r">Assignee</TableHead>
+                  <TableHead className="border-r">Department</TableHead>
+                  <TableHead className="border-r">Reports To</TableHead>
+                  <TableHead className="border-r">Due Date</TableHead>
+                  <TableHead className="border-r">Priority</TableHead>
+                  <TableHead className="border-r">Status</TableHead>
+                  <TableHead className="border-r">Documents</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

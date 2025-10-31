@@ -228,21 +228,23 @@ const NewTaskForm: React.FC<NewTaskFormProps> = ({ taskType, onSubmit, onCancel 
         is_customer_related: taskType === 'recurring' ? formData.parentIsCustomerRelated : formData.childIsCustomerRelated,
         customer_name: taskType === 'recurring' ? formData.parentCustomerName : formData.childCustomerName,
         attachments_required: formData.attachmentsRequired,
-        
-        // For one-time tasks, use child data directly
-        assignee: taskType === 'one-time' ? formData.assignee : undefined,
-        due_date: taskType === 'one-time' ? formData.dueDate?.toISOString().split('T')[0] : undefined,
-        
-        // For recurring tasks, send child instance data separately
-        ...(taskType === 'recurring' && {
-          assignee: formData.assignee, // First child assignee
-          due_date: formData.dueDate?.toISOString().split('T')[0], // First child due date
-          child_customer_name: formData.childCustomerName || null,
-          child_customer_email: null,
-          child_is_customer_related: formData.childIsCustomerRelated,
-          child_attachments_required: formData.attachmentsRequired
-        })
       };
+      
+      // Add assignee and due_date based on task type
+      if (taskType === 'one-time') {
+        taskPayload.assignee = formData.assignee;
+        taskPayload.due_date = formData.dueDate?.toISOString().split('T')[0];
+      } else if (taskType === 'recurring') {
+        // For recurring tasks, send child instance data
+        taskPayload.assignee = formData.assignee;
+        taskPayload.due_date = formData.dueDate?.toISOString().split('T')[0];
+        taskPayload.child_customer_name = formData.childCustomerName || null;
+        taskPayload.child_customer_email = null;
+        taskPayload.child_is_customer_related = formData.childIsCustomerRelated;
+        taskPayload.child_attachments_required = formData.attachmentsRequired;
+      }
+      
+      console.log('NewTaskForm: Task payload being submitted:', taskPayload);
 
       onSubmit(taskPayload);
     } catch (error) {

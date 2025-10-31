@@ -692,12 +692,50 @@ export const fastapiService = {
   },
 
   async createTask(taskData: any) {
+    // Normalize payload keys for backend
+    const payload: any = {
+      title: taskData.title,
+      description: taskData.description,
+      priority: taskData.priority || 'medium',
+      status: taskData.status || 'not-started',
+      // parent (recurring) attributes
+      is_recurring: taskData.is_recurring ?? taskData.isRecurring ?? false,
+      recurring_frequency: taskData.is_recurring 
+        ? (taskData.recurring_frequency || taskData.recurringFrequency || null)
+        : null,
+      // Department: backend accepts either 'department' (name) or 'department_id' (UUID)
+      // If it's a UUID format, use department_id, otherwise use department name
+      ...(taskData.department_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(taskData.department_id)
+        ? { department_id: taskData.department_id }
+        : { department: taskData.department || taskData.department_id }),
+      is_customer_related: taskData.is_customer_related ?? taskData.isCustomerRelated ?? false,
+      customer_name: (taskData.customer_name ?? taskData.customerName) || null,
+      start_date: taskData.start_date || taskData.startDate || null,
+      end_date: taskData.end_date || taskData.endDate || null,
+    };
+    // Remove null/undefined values
+    Object.keys(payload).forEach(k => payload[k] === null || payload[k] === undefined ? delete payload[k] : null);
+    
+    // Common single-instance fields - backend accepts 'assignee' or 'assignee_id'
+    const dueDate = taskData.due_date || taskData.dueDate;
+    const assigneeId = taskData.assignee_id || taskData.assignee;
+    if (dueDate) payload.due_date = typeof dueDate === 'string' ? dueDate : undefined;
+    if (assigneeId) payload.assignee = assigneeId; // Use 'assignee' as backend expects it
+    
+    // For recurring tasks, also set child-specific fields if provided
+    if (payload.is_recurring) {
+      if (taskData.child_customer_name !== undefined) payload.child_customer_name = taskData.child_customer_name;
+      if (taskData.child_customer_email !== undefined) payload.child_customer_email = taskData.child_customer_email;
+      if (taskData.child_is_customer_related !== undefined) payload.child_is_customer_related = taskData.child_is_customer_related;
+      if (taskData.child_attachments_required !== undefined) payload.child_attachments_required = taskData.child_attachments_required;
+    }
+
     const response = await fetch(`${API_BASE}/api/v1/tasks`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(taskData),
+      body: JSON.stringify(payload),
     });
     
     if (!response.ok) {
@@ -726,12 +764,26 @@ export const fastapiService = {
   },
 
   async updateTask(taskId: string, taskData: any) {
+    // Normalize frontend fields to backend expectations
+    const payload: any = {
+      title: taskData.title,
+      description: taskData.description,
+      assignee_id: taskData.assignee_id || taskData.assignee || null,
+      due_date: taskData.due_date || taskData.dueDate || null,
+      priority: taskData.priority,
+      status: taskData.status,
+      is_customer_related: taskData.is_customer_related ?? taskData.isCustomerRelated ?? false,
+      customer_name: taskData.customer_name ?? taskData.customerName ?? null,
+    };
+    // Remove undefined keys
+    Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
+
     const response = await fetch(`${API_BASE}/api/v1/tasks/${taskId}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(taskData),
+      body: JSON.stringify(payload),
     });
     
     if (!response.ok) {
