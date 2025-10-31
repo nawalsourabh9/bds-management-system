@@ -416,14 +416,15 @@ class DatabaseService:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""
                     INSERT INTO tasks (
-                        title, description, status, priority, department_id,
+                        id, title, description, status, priority, department_id,
                         assignee_id, created_by, start_date, due_date,
                         is_recurring, recurring_frequency, is_customer_related, customer_name,
                         attachments_required, is_parent_task, parent_task_id
                     ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     ) RETURNING id
                 """, (
+                    str(uuid.uuid4()),
                     task_data.get('title'),
                     task_data.get('description'),
                     task_data.get('status', 'not-started'),
