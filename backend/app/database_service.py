@@ -2,6 +2,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from app.core.config import settings
 import logging
+import uuid
 from datetime import datetime, date
 
 logger = logging.getLogger(__name__)
@@ -729,10 +730,11 @@ class DatabaseService:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""
-                    INSERT INTO positions (name, description, department_id, level)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO positions (id, name, description, department_id, level)
+                    VALUES (%s, %s, %s, %s, %s)
                     RETURNING id, name, description, department_id, level, is_active, created_at, updated_at
                 """, (
+                    str(uuid.uuid4()),
                     position_data['name'],
                     position_data.get('description', ''),
                     position_data['department_id'],

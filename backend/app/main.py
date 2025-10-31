@@ -10,6 +10,7 @@ from pydantic import BaseModel
 import os
 import logging
 import sys
+import uuid
 from psycopg2.extras import RealDictCursor
 
 # Configure logging
@@ -717,10 +718,11 @@ async def create_department(department_data: dict):
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""
-                    INSERT INTO departments (name, description, manager_id, parent_department_id)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO departments (id, name, description, manager_id, parent_department_id)
+                    VALUES (%s, %s, %s, %s, %s)
                     RETURNING id, name, description, manager_id, created_at, updated_at
                 """, (
+                    str(uuid.uuid4()),
                     department_data['name'],
                     department_data.get('description', ''),
                     department_data.get('manager_id'),
