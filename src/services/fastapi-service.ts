@@ -357,12 +357,15 @@ export const fastapiService = {
   // User Management
   async getUsers() {
     const token = localStorage.getItem('token');
-    const response = await fetch(`${API_BASE}/api/v1/users`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    const response = await fetch(`${API_BASE}/api/v1/users`, { headers });
     
     if (!response.ok) {
       throw new Error(`Get users failed: ${response.statusText}`);
@@ -439,12 +442,15 @@ export const fastapiService = {
             ? `${API_BASE}/api/v1/positions?department_id=${departmentId}`
             : `${API_BASE}/api/v1/positions`;
         
-        const response = await fetch(url, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-            },
-        });
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+        };
+        
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        
+        const response = await fetch(url, { headers });
         if (!response.ok) {
             throw new Error(`Get positions failed: ${response.statusText}`);
         }
@@ -574,12 +580,15 @@ export const fastapiService = {
 
     async getDepartments() {
     const token = localStorage.getItem('token');
-    const response = await fetch(`${API_BASE}/api/v1/departments`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    const response = await fetch(`${API_BASE}/api/v1/departments`, { headers });
     
     if (!response.ok) {
       throw new Error(`Get departments failed: ${response.statusText}`);
