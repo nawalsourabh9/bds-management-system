@@ -367,7 +367,7 @@ class DatabaseService:
                 values = []
                 
                 for field, value in department_data.items():
-                    if field in ['name', 'description', 'manager_id'] and value is not None:
+                    if field in ['name', 'description', 'manager_id', 'parent_department_id'] and value is not None:
                         set_clauses.append(f"{field} = %s")
                         values.append(value)
                 

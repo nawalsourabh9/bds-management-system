@@ -35,6 +35,7 @@ interface Department {
   has_sub_department?: boolean;
   sub_department_name?: string;
   positions?: Position[];
+  sub_departments?: Department[];
 }
 
 interface User {
@@ -104,6 +105,21 @@ export default function DepartmentsPage() {
             // Determine if it's a sub-department based on parent_department_id
             const isSubDepartment = !!dept.parent_department_id;
             
+            // Build sub-departments array for this department
+            const subDepartments = deptData
+              .filter((otherDept: any) => otherDept.parent_department_id === dept.id)
+              .map((subDept: any) => {
+                const subUserCount = usersResponse.users?.filter((user: any) => 
+                  user.department_id === subDept.id
+                ).length || 0;
+                
+                return {
+                  ...subDept,
+                  user_count: subUserCount,
+                  department_type: 'sub_department',
+                };
+              });
+            
             return {
               ...dept,
               user_count: userCount,
@@ -111,6 +127,7 @@ export default function DepartmentsPage() {
               sub_department_count: subDepartmentCount,
               parent_department_name: parentDepartmentName,
               department_type: isSubDepartment ? 'sub_department' : 'department',
+              sub_departments: subDepartments,
             };
           } catch (error) {
             return {
@@ -120,6 +137,7 @@ export default function DepartmentsPage() {
               sub_department_count: 0,
               parent_department_name: '',
               department_type: !!dept.parent_department_id ? 'sub_department' : 'department',
+              sub_departments: [],
             };
           }
         })
@@ -510,7 +528,6 @@ export default function DepartmentsPage() {
                         </div>
                         <div className="space-y-2">
                           {department.sub_departments.map((subDept) => (
-                            {/* Sub-department shown as nested box for hierarchy */}
                             <div key={subDept.id} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
                               <div className="flex items-start justify-between">
                                 <div className="flex-1">
