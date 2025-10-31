@@ -560,7 +560,7 @@ class DatabaseService:
                 
                 for field, value in user_data.items():
                     if value is not None and field in [
-                        'email', 'first_name', 'last_name', 'role', 
+                        'employee_id', 'email', 'first_name', 'last_name', 'role', 
                         'department_id', 'is_active', 'reports_to_id', 'position_id'
                     ]:
                         update_fields.append(f"{field} = %s")

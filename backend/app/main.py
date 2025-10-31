@@ -592,13 +592,14 @@ async def create_user(user_data: dict):
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""
                     INSERT INTO users (
-                        employee_id, email, password_hash, first_name, last_name, role, department_id, 
+                        id, employee_id, email, password_hash, first_name, last_name, role, department_id, 
                         reports_to_id, position_id, is_active
                     ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     ) RETURNING id, employee_id, email, first_name, last_name, role, department_id, 
                                reports_to_id, position_id, is_active, created_at
                 """, (
+                    str(uuid.uuid4()),
                     user_data['employee_id'],
                     user_data['email'],
                     default_password_hash,
