@@ -322,14 +322,48 @@ class DatabaseService:
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Base department with parent info
                 cur.execute("""
                     SELECT 
-                        id, name, description, manager_id, created_at, updated_at
-                    FROM departments 
-                    WHERE id = %s
+                        d.id, d.name, d.description, d.manager_id, 
+                        d.parent_department_id,
+                        parent.name AS parent_department_name,
+                        d.created_at, d.updated_at
+                    FROM departments d
+                    LEFT JOIN departments parent ON parent.id = d.parent_department_id
+                    WHERE d.id = %s
                 """, (department_id,))
                 department = cur.fetchone()
-                return dict(department) if department else None
+                if not department:
+                    return None
+
+                result = dict(department)
+
+                # Positions for this department (if table exists)
+                try:
+                    cur.execute("""
+                        SELECT id, name, description, level, is_active, created_at, updated_at
+                        FROM positions
+                        WHERE department_id = %s
+                        ORDER BY name
+                    """, (department_id,))
+                    positions = cur.fetchall() or []
+                    result["positions"] = [dict(p) for p in positions]
+                except Exception:
+                    # Positions table may not exist in minimal schema; ignore
+                    result["positions"] = []
+
+                # Sub-departments
+                cur.execute("""
+                    SELECT id, name, description, manager_id, created_at, updated_at
+                    FROM departments
+                    WHERE parent_department_id = %s
+                    ORDER BY name
+                """, (department_id,))
+                subs = cur.fetchall() or []
+                result["sub_departments"] = [dict(s) for s in subs]
+
+                return result
         except Exception as e:
             logger.error(f"Error fetching department by ID: {e}")
             raise
