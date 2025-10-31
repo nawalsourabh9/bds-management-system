@@ -1,11 +1,13 @@
 from pydantic_settings import BaseSettings
 from typing import List, Optional
+from urllib.parse import quote_plus
 
 class Settings(BaseSettings):
     # Basic settings
     SECRET_KEY: str = "your-super-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    DEBUG: bool = False
     
     # Database
     DB_HOST: str = "localhost"
@@ -13,10 +15,13 @@ class Settings(BaseSettings):
     DB_NAME: str = "bds_management"
     DB_USER: str = "bds_user"
     DB_PASSWORD: str = "bds_password"
+    DB_SSLMODE: str = "prefer"
     
     @property
     def DATABASE_URL(self) -> str:
-        return f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+        # URL encode password to handle special characters
+        encoded_password = quote_plus(self.DB_PASSWORD)
+        return f"postgresql://{self.DB_USER}:{encoded_password}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}?sslmode={self.DB_SSLMODE}"
     
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -52,6 +57,14 @@ class Settings(BaseSettings):
     
     # Timezone
     DEFAULT_TIMEZONE: str = "Asia/Kolkata"
+    
+    # Email Configuration (for password notifications)
+    SMTP_SERVER: Optional[str] = None
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    FROM_EMAIL: str = "noreply@bdsmanufacturing.in"
+    FROM_NAME: str = "BDS Management System"
     
     class Config:
         env_file = ".env"
