@@ -436,7 +436,10 @@ export default function DepartmentsPage() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {filteredDepartments.map((department) => (
+            {/* Show only main departments at top-level; sub-departments render inside their parent */}
+            {filteredDepartments
+              .filter((d) => !d.parent_department_id)
+              .map((department) => (
               <Card key={department.id} className="border-l-4 border-l-green-500">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
@@ -444,9 +447,15 @@ export default function DepartmentsPage() {
                       <div className="flex items-center gap-2">
                         <Building2 className="w-4 h-4 text-green-600" />
                         <CardTitle className="text-lg">{department.name}</CardTitle>
-                        <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
-                          Main Department
-                        </span>
+                        {!department.parent_department_id ? (
+                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                            Main Department
+                          </span>
+                        ) : (
+                          <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-full">
+                            Sub Department{department.parent_department_name ? ` of ${department.parent_department_name}` : ''}
+                          </span>
+                        )}
                       </div>
                       {department.description && (
                         <p className="text-sm text-gray-600 mt-1">{department.description}</p>
@@ -501,12 +510,16 @@ export default function DepartmentsPage() {
                         </div>
                         <div className="space-y-2">
                           {department.sub_departments.map((subDept) => (
+                            {/* Sub-department shown as nested box for hierarchy */}
                             <div key={subDept.id} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
                               <div className="flex items-start justify-between">
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2">
                                     <GitBranch className="w-3 h-3 text-orange-600" />
                                     <span className="text-sm font-medium text-gray-900">{subDept.name}</span>
+                                    <span className="text-[10px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full">
+                                      Sub Department
+                                    </span>
                                   </div>
                                   {subDept.description && (
                                     <p className="text-xs text-gray-600 mt-1">{subDept.description}</p>
