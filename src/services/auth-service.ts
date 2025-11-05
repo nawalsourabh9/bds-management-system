@@ -90,6 +90,29 @@ export const updateProfile = async (data: any, userId: string): Promise<void> =>
   console.warn('updateProfile not implemented');
 };
 
-export const changePassword = async (currentPassword: string, newPassword: string, email: string): Promise<void> => {
-  console.warn('changePassword not implemented');
+export const changePassword = async (currentPassword: string, newPassword: string, userId: string): Promise<void> => {
+  try {
+    const response = await fetch(`${API_BASE}/api/v1/auth/change-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        current_password: currentPassword,
+        new_password: newPassword
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Failed to change password');
+    }
+
+    toast.success('Password changed successfully');
+  } catch (error: any) {
+    console.error('Error changing password:', error);
+    toast.error(error.message || 'Failed to change password');
+    throw error;
+  }
 };

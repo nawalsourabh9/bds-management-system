@@ -9,7 +9,18 @@ logger = logging.getLogger(__name__)
 
 class DatabaseService:
     def __init__(self):
-        self.connection_string = settings.DATABASE_URL
+        # Don't cache connection string - read it dynamically from settings
+        # This ensures environment variables are read at runtime, not at module load time
+        logger.info("DatabaseService initialized (connection string will be read dynamically)")
+    
+    @property
+    def connection_string(self):
+        """Get connection string dynamically from settings (reads environment variables at runtime)"""
+        db_url = settings.DATABASE_URL
+        # Log connection info (without password for security)
+        safe_url = db_url.split('@')[-1] if '@' in db_url else 'hidden'
+        logger.info(f"Using database connection: postgresql://***@{safe_url}")
+        return db_url
     
     def get_connection(self):
         """Get a database connection"""
@@ -22,6 +33,7 @@ class DatabaseService:
 
     def create_notification(self, user_id: str, title: str, message: str, notification_type: str = 'info'):
         """Create a new notification"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor() as cur:
@@ -45,6 +57,7 @@ class DatabaseService:
             if conn:
                 conn.close()
 
+        conn = None
     def get_notifications_by_user(self, user_id: str, limit: int = 50):
         """Get notifications for a specific user"""
         try:
@@ -69,6 +82,7 @@ class DatabaseService:
             if conn:
                 conn.close()
     
+        conn = None
     def execute_query(self, query, params=None):
         """Execute a query and return results"""
         try:
@@ -88,6 +102,7 @@ class DatabaseService:
             if conn:
                 conn.close()
     
+        conn = None
     def get_users(self):
         """Get all active users with department and position information"""
         try:
@@ -126,20 +141,48 @@ class DatabaseService:
     
     def get_user_by_email(self, email):
         """Get user by email"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Check if password_hash column exists
                 cur.execute("""
-                    SELECT 
-                        id, employee_id, email, first_name, last_name, role, 
-                        department_id, is_active, created_at, updated_at
-                    FROM users 
-                    WHERE email = %s AND is_active = true
-                """, (email,))
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name='users' AND column_name='password_hash'
+                """)
+                has_password_hash = cur.fetchone() is not None
+                
+                # Build query based on whether password_hash column exists
+                if has_password_hash:
+                    cur.execute("""
+                        SELECT 
+                            id, employee_id, email, password_hash, first_name, last_name, role, 
+                            department_id, is_active, created_at, updated_at
+                        FROM users 
+                        WHERE email = %s AND is_active = true
+                    """, (email,))
+                else:
+                    # Fallback for databases without password_hash column
+                    cur.execute("""
+                        SELECT 
+                            id, employee_id, email, first_name, last_name, role, 
+                            department_id, is_active, created_at, updated_at
+                        FROM users 
+                        WHERE email = %s AND is_active = true
+                    """, (email,))
+                    # Add None for password_hash
+                    user = cur.fetchone()
+                    if user:
+                        user = dict(user)
+                        user['password_hash'] = None
+                        return user
+                    return None
+                
                 user = cur.fetchone()
                 return dict(user) if user else None
         except Exception as e:
-            logger.error(f"Error fetching user by email: {e}")
+            logger.error(f"Error fetching user by email: {e}", exc_info=True)
             raise
         finally:
             if conn:
@@ -147,25 +190,54 @@ class DatabaseService:
 
     def get_user_by_employee_id(self, employee_id):
         """Get user by employee ID"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Check if password_hash column exists
                 cur.execute("""
-                    SELECT 
-                        id, employee_id, email, first_name, last_name, role, 
-                        department_id, is_active, created_at, updated_at
-                    FROM users 
-                    WHERE employee_id = %s AND is_active = true
-                """, (employee_id,))
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name='users' AND column_name='password_hash'
+                """)
+                has_password_hash = cur.fetchone() is not None
+                
+                # Build query based on whether password_hash column exists
+                if has_password_hash:
+                    cur.execute("""
+                        SELECT 
+                            id, employee_id, email, password_hash, first_name, last_name, role, 
+                            department_id, is_active, created_at, updated_at
+                        FROM users 
+                        WHERE employee_id = %s AND is_active = true
+                    """, (employee_id,))
+                else:
+                    # Fallback for databases without password_hash column
+                    cur.execute("""
+                        SELECT 
+                            id, employee_id, email, first_name, last_name, role, 
+                            department_id, is_active, created_at, updated_at
+                        FROM users 
+                        WHERE employee_id = %s AND is_active = true
+                    """, (employee_id,))
+                    # Add None for password_hash
+                    user = cur.fetchone()
+                    if user:
+                        user = dict(user)
+                        user['password_hash'] = None
+                        return user
+                    return None
+                
                 user = cur.fetchone()
                 return dict(user) if user else None
         except Exception as e:
-            logger.error(f"Error fetching user by employee ID: {e}")
+            logger.error(f"Error fetching user by employee ID: {e}", exc_info=True)
             raise
         finally:
             if conn:
                 conn.close()
     
+        conn = None
     def get_tasks(self):
         """Get all tasks with department names and employee information"""
         try:
@@ -218,6 +290,7 @@ class DatabaseService:
             if conn:
                 conn.close()
 
+        conn = None
     def get_task_by_id(self, task_id: str):
         """Get a specific task by ID with department names and employee information"""
         try:
@@ -268,6 +341,7 @@ class DatabaseService:
             if conn:
                 conn.close()
     
+        conn = None
     def get_departments(self):
         """Get all departments with parent department information and positions"""
         try:
@@ -304,6 +378,7 @@ class DatabaseService:
             if conn:
                 conn.close()
     
+        conn = None
     def get_department_id_by_name(self, department_name):
         """Get department ID by name"""
         try:
@@ -319,6 +394,7 @@ class DatabaseService:
             if conn:
                 conn.close()
     
+        conn = None
     def get_department_by_id(self, department_id: str):
         """Get department by ID"""
         try:
@@ -373,6 +449,7 @@ class DatabaseService:
             if conn:
                 conn.close()
     
+        conn = None
     def get_department_by_name(self, department_name: str):
         """Get department by name"""
         try:
@@ -393,6 +470,7 @@ class DatabaseService:
             if conn:
                 conn.close()
     
+        conn = None
     def update_department(self, department_id: str, department_data: dict):
         """Update a department"""
         try:
@@ -430,6 +508,7 @@ class DatabaseService:
             if conn:
                 conn.close()
     
+        conn = None
     def delete_department(self, department_id: str):
         """Delete a department"""
         try:
@@ -445,6 +524,7 @@ class DatabaseService:
             if conn:
                 conn.close()
     
+        conn = None
     def create_task(self, task_data):
         """Create a new task"""
         try:
@@ -491,6 +571,7 @@ class DatabaseService:
             if conn:
                 conn.close()
     
+        conn = None
     def update_task(self, task_id, task_data):
         """Update a task"""
         try:
@@ -547,6 +628,7 @@ class DatabaseService:
             if conn:
                 conn.close()
     
+        conn = None
     def delete_task(self, task_id):
         """Delete a task"""
         try:
@@ -564,6 +646,7 @@ class DatabaseService:
             if conn:
                 conn.close()
 
+        conn = None
     def get_user_by_id(self, user_id: str):
         """Get a user by ID"""
         try:
@@ -588,6 +671,7 @@ class DatabaseService:
             if conn:
                 conn.close()
 
+        conn = None
     def update_user(self, user_id: str, user_data: dict):
         """Update a user"""
         try:
@@ -625,6 +709,7 @@ class DatabaseService:
             if conn:
                 conn.close()
 
+        conn = None
     def delete_user(self, user_id: str):
         """Delete a user"""
         try:
@@ -642,6 +727,7 @@ class DatabaseService:
             if conn:
                 conn.close()
 
+        conn = None
     def create_otp_code(self, otp_data: dict):
         """Create OTP code"""
         try:
@@ -666,6 +752,7 @@ class DatabaseService:
             if conn:
                 conn.close()
 
+        conn = None
     def get_otp_code(self, email: str):
         """Get OTP code for email"""
         try:
@@ -685,6 +772,7 @@ class DatabaseService:
             if conn:
                 conn.close()
 
+        conn = None
     def update_otp_code(self, email: str, otp_data: dict):
         """Update OTP code"""
         try:
@@ -707,6 +795,7 @@ class DatabaseService:
                 conn.close()
     
     # Position Management Methods
+        conn = None
     def get_positions(self, department_id: str = None):
         """Get all positions, optionally filtered by department"""
         try:
@@ -743,6 +832,7 @@ class DatabaseService:
             if conn:
                 conn.close()
     
+        conn = None
     def get_position_by_id(self, position_id: str):
         """Get a specific position by ID"""
         try:
@@ -763,6 +853,7 @@ class DatabaseService:
             if conn:
                 conn.close()
     
+        conn = None
     def create_position(self, position_data: dict):
         """Create a new position"""
         try:
@@ -789,6 +880,7 @@ class DatabaseService:
             if conn:
                 conn.close()
     
+        conn = None
     def update_position(self, position_id: str, position_data: dict):
         """Update a position"""
         try:
@@ -824,6 +916,7 @@ class DatabaseService:
             if conn:
                 conn.close()
     
+        conn = None
     def delete_position(self, position_id: str):
         """Delete a position"""
         try:
@@ -840,6 +933,7 @@ class DatabaseService:
                 conn.close()
     
     # Hierarchy Management Methods
+        conn = None
     def get_user_hierarchy(self, user_id: str):
         """Get the reporting hierarchy for a user"""
         try:
@@ -855,6 +949,7 @@ class DatabaseService:
             if conn:
                 conn.close()
     
+        conn = None
     def get_users_by_reporting_level(self, user_id: str):
         """Get users that the current user can manage based on hierarchy"""
         try:
@@ -870,6 +965,7 @@ class DatabaseService:
             if conn:
                 conn.close()
     
+        conn = None
     def get_department_hierarchy(self, department_id: str):
         """Get the department hierarchy including sub-departments"""
         try:
@@ -885,6 +981,7 @@ class DatabaseService:
             if conn:
                 conn.close()
     
+        conn = None
     def get_sub_departments(self, parent_department_id: str):
         """Get all sub-departments of a parent department"""
         try:

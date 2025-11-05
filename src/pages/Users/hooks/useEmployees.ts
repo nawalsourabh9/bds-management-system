@@ -54,7 +54,7 @@ export const useEmployees = () => {
       // Use sub-department if selected, otherwise use main department
       const finalDepartmentId = employeeData.subDepartment || employeeData.department;
       
-      await fastapiService.createUser({
+      const response = await fastapiService.createUser({
         employee_id: employeeData.employeeId,
         email: employeeData.email,
         first_name: employeeData.name.split(' ')[0],
@@ -66,11 +66,12 @@ export const useEmployees = () => {
         is_active: employeeData.status === 'Active'
       });
 
-      toast.success('Employee added successfully');
       fetchEmployees(); // Refresh the list
+      return response; // Return response with password
     } catch (error: any) {
       console.error('Error adding employee:', error);
       toast.error(error.message || 'Failed to add employee');
+      throw error;
     }
   };
 

@@ -12,10 +12,23 @@ import logging
 import sys
 import uuid
 from psycopg2.extras import RealDictCursor
+from passlib.context import CryptContext
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Password hashing context
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# Password utility functions
+def hash_password(password: str) -> str:
+    """Hash a password using bcrypt"""
+    return pwd_context.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a password against its hash"""
+    return pwd_context.verify(plain_password, hashed_password)
 
 # Check if this is a Celery worker (exit if so)
 if settings.CELERY_WORKER:
@@ -132,6 +145,40 @@ if settings.CELERY_WORKER:
 @app.get("/")
 async def root():
     return {"message": "BDS Management System API"}
+
+@app.get("/debug/db-config")
+async def debug_db_config():
+    """Debug endpoint to check database configuration"""
+    import os
+    safe_conn = "***"
+    try:
+        conn_str = settings.DATABASE_URL
+        if "@" in conn_str:
+            safe_conn = "postgresql://***@" + conn_str.split("@")[-1]
+        else:
+            safe_conn = "***"
+    except:
+        safe_conn = "ERROR"
+    
+    return {
+        "env_vars": {
+            "DB_HOST": os.getenv("DB_HOST"),
+            "DB_USER": os.getenv("DB_USER"),
+            "DB_NAME": os.getenv("DB_NAME"),
+            "DB_PORT": os.getenv("DB_PORT"),
+            "DB_SSLMODE": os.getenv("DB_SSLMODE"),
+            "DB_PASSWORD": "***" if os.getenv("DB_PASSWORD") else None
+        },
+        "settings_values": {
+            "DB_HOST": settings.DB_HOST,
+            "DB_USER": settings.DB_USER,
+            "DB_NAME": settings.DB_NAME,
+            "DB_PORT": settings.DB_PORT,
+            "DB_SSLMODE": settings.DB_SSLMODE
+        },
+        "connection_string": safe_conn,
+        "database_service_conn": "***" + str(db_service.connection_string).split("@")[-1] if "@" in str(db_service.connection_string) else "ERROR"
+    }
 
 @app.get("/health")
 async def health_check():
@@ -417,30 +464,100 @@ async def login(login_data: LoginRequest):
             user = db_service.get_user_by_employee_id(login_data.email)
         
         if not user:
+            logger.warning(f"Login attempt with invalid email/employee_id: {login_data.email}")
             raise HTTPException(status_code=401, detail="Invalid email/employee ID or password")
         
-        # For demo purposes, accept any password for any user
-        # In production, this should be proper password verification with bcrypt
-        if user and user.get('is_active', True):
-            user_dict = {
-                "id": str(user['id']),
-                "employee_id": user.get('employee_id'),
-                "email": user['email'],
-                "first_name": user['first_name'],
-                "last_name": user['last_name'],
-                "role": user['role'],
-                "department": user.get('department_id'),
-                "is_active": user['is_active'],
-                "created_at": user['created_at'].isoformat() if user['created_at'] else None
-            }
-            return LoginResponse(
-                user=user_dict,
-                message="Login successful"
-            )
-        else:
-            raise HTTPException(status_code=401, detail="Invalid email or password")
+        # Verify password using bcrypt
+        password_hash = user.get('password_hash')
+        if not password_hash:
+            logger.error(f"User {login_data.email} has no password hash - account needs password reset")
+            raise HTTPException(status_code=401, detail="User account is not properly configured. Please contact administrator to reset your password.")
+        
+        # Verify the provided password against the stored hash
+        if not verify_password(login_data.password, password_hash):
+            logger.warning(f"Invalid password attempt for user: {login_data.email}")
+            raise HTTPException(status_code=401, detail="Invalid email/employee ID or password")
+        
+        # Check if user is active
+        if not user.get('is_active', True):
+            logger.warning(f"Login attempt for inactive user: {login_data.email}")
+            raise HTTPException(status_code=401, detail="User account is inactive")
+        
+        # Build user response (exclude password_hash)
+        user_dict = {
+            "id": str(user['id']),
+            "employee_id": user.get('employee_id'),
+            "email": user['email'],
+            "first_name": user['first_name'],
+            "last_name": user['last_name'],
+            "role": user['role'],
+            "department": user.get('department_id'),
+            "is_active": user['is_active'],
+            "created_at": user['created_at'].isoformat() if user.get('created_at') else None
+        }
+        
+        logger.info(f"Successful login for user: {login_data.email}")
+        return LoginResponse(
+            user=user_dict,
+            message="Login successful"
+        )
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
-        logger.error(f"Login error: {e}")
+        logger.error(f"Login error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.post("/api/v1/auth/change-password")
+async def change_password(password_data: dict):
+    """Change user password"""
+    try:
+        user_id = password_data.get('user_id')
+        current_password = password_data.get('current_password')
+        new_password = password_data.get('new_password')
+        
+        if not all([user_id, current_password, new_password]):
+            raise HTTPException(status_code=400, detail="Missing required fields")
+        
+        # Get user from database
+        user = db_service.get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Verify current password
+        conn = db_service.get_connection()
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT password_hash FROM users WHERE id = %s", (user_id,))
+                result = cur.fetchone()
+                
+                if not result:
+                    raise HTTPException(status_code=404, detail="User not found")
+                
+                hashed_password = result['password_hash']
+                
+                # Verify current password
+                if not verify_password(current_password, hashed_password):
+                    raise HTTPException(status_code=401, detail="Current password is incorrect")
+                
+                # Hash new password
+                new_password_hash = hash_password(new_password)
+                
+                # Update password
+                cur.execute(
+                    "UPDATE users SET password_hash = %s WHERE id = %s",
+                    (new_password_hash, user_id)
+                )
+                conn.commit()
+                
+                return {"message": "Password changed successfully"}
+        finally:
+            conn.close()
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error changing password: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/api/v1/tasks/grouped")
@@ -591,9 +708,18 @@ async def create_user(user_data: dict):
         if existing_employee:
             raise HTTPException(status_code=400, detail="Employee ID already exists")
         
-        # Create user with default password hash (for demo purposes)
-        # In production, this should be a proper password hash
-        default_password_hash = "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj4J/HS.iK8i"  # "admin123"
+        # Generate a random password if not provided
+        import secrets
+        import string
+        if 'password' in user_data and user_data['password']:
+            plain_password = user_data['password']
+        else:
+            # Generate random password: 10 chars, at least 1 upper, 1 lower, 1 digit
+            alphabet = string.ascii_letters + string.digits
+            plain_password = ''.join(secrets.choice(alphabet) for _ in range(10))
+        
+        # Hash the password
+        password_hash = hash_password(plain_password)
         
         conn = db_service.get_connection()
         try:
@@ -610,7 +736,7 @@ async def create_user(user_data: dict):
                     str(uuid.uuid4()),
                     user_data['employee_id'],
                     user_data['email'],
-                    default_password_hash,
+                    password_hash,
                     user_data['first_name'],
                     user_data['last_name'],
                     user_data['role'],
@@ -621,7 +747,11 @@ async def create_user(user_data: dict):
                 ))
                 new_user = cur.fetchone()
                 conn.commit()
-                return {"user": dict(new_user), "message": "User created successfully"}
+                return {
+                    "user": dict(new_user), 
+                    "message": "User created successfully",
+                    "password": plain_password  # Return plain password for display
+                }
         finally:
             conn.close()
             

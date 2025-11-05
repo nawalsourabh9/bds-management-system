@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,9 @@ import { fastapiService } from "@/services/fastapi-service";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertCircle, CheckCircle, Copy } from "lucide-react";
+import { Label } from "@/components/ui/label";
 
 interface CreateUserDialogProps {
   isOpen: boolean;
@@ -58,6 +61,8 @@ export const CreateUserDialog = ({ isOpen, setIsOpen, onUserCreated }: CreateUse
   const [manageableUsers, setManageableUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingDepartments, setLoadingDepartments] = useState(false);
+  const [showCredentials, setShowCredentials] = useState(false);
+  const [credentials, setCredentials] = useState<{ email: string; password: string } | null>(null);
 
   const form = useForm<z.infer<typeof createUserSchema>>({
     resolver: zodResolver(createUserSchema),
@@ -163,7 +168,7 @@ export const CreateUserDialog = ({ isOpen, setIsOpen, onUserCreated }: CreateUse
       // Use sub-department ID if selected, otherwise use main department ID
       const finalDepartmentId = values.subDepartment || values.department;
       
-      await fastapiService.createUser({
+      const response = await fastapiService.createUser({
         employee_id: values.employeeId,
         email: values.email,
         first_name: firstName,
@@ -175,9 +180,16 @@ export const CreateUserDialog = ({ isOpen, setIsOpen, onUserCreated }: CreateUse
         is_active: true,
       });
 
+      // Show credentials dialog if password was returned
+      if (response.password) {
+        setCredentials({ email: values.email, password: response.password });
+        setShowCredentials(true);
+        setIsOpen(false); // Close create dialog
+      } else {
       toast.success("User created successfully");
       setIsOpen(false);
       form.reset();
+      }
       onUserCreated();
     } catch (error: any) {
       console.error("Error creating user:", error);
@@ -390,6 +402,86 @@ export const CreateUserDialog = ({ isOpen, setIsOpen, onUserCreated }: CreateUse
           </form>
         </Form>
       </DialogContent>
+
+      {/* Credentials Dialog */}
+      <Dialog open={showCredentials} onOpenChange={() => {}}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle className="h-5 w-5 text-green-600" />
+              User Created Successfully
+            </DialogTitle>
+            <DialogDescription>
+              Save these credentials - they won't be shown again!
+            </DialogDescription>
+          </DialogHeader>
+          
+          <Alert className="bg-yellow-50 border-yellow-200">
+            <AlertCircle className="h-4 w-4 text-yellow-700" />
+            <AlertDescription className="text-yellow-700">
+              The user must log in with these credentials and change their password immediately.
+            </AlertDescription>
+          </Alert>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Email</Label>
+              <div className="flex gap-2">
+                <Input
+                  value={credentials?.email || ''}
+                  readOnly
+                  className="bg-muted font-mono text-sm"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => {
+                    navigator.clipboard.writeText(credentials?.email || '');
+                    toast.success("Email copied to clipboard");
+                  }}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Password</Label>
+              <div className="flex gap-2">
+                <Input
+                  value={credentials?.password || ''}
+                  readOnly
+                  className="bg-muted font-mono text-sm font-bold"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => {
+                    navigator.clipboard.writeText(credentials?.password || '');
+                    toast.success("Password copied to clipboard");
+                  }}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              onClick={() => {
+                setShowCredentials(false);
+                form.reset();
+                setCredentials(null);
+              }}
+            >
+              I've Saved the Credentials
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 };
