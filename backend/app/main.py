@@ -12,7 +12,8 @@ import logging
 import sys
 import uuid
 from psycopg2.extras import RealDictCursor
-from passlib.context import CryptContext
+import bcrypt
+from fastapi import Request
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -22,13 +23,33 @@ logger = logging.getLogger(__name__)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Password utility functions
+def _prepare_password_bytes(password: str) -> bytes:
+    if not password or not isinstance(password, str):
+        return b""
+    return password.encode("utf-8")[:72]
+
+
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt"""
-    return pwd_context.hash(password)
+    password_bytes = _prepare_password_bytes(password)
+    if not password_bytes:
+        raise ValueError("Password cannot be empty")
+    hashed = bcrypt.hashpw(password_bytes, bcrypt.gensalt())
+    return hashed.decode("utf-8")
+
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash"""
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        if not hashed_password or not isinstance(hashed_password, str):
+            return False
+        password_bytes = _prepare_password_bytes(plain_password)
+        if not password_bytes:
+            return False
+        return bcrypt.checkpw(password_bytes, hashed_password.encode("utf-8"))
+    except Exception as e:
+        logger.error(f"Password verification error: {e}")
+        return False
 
 # Check if this is a Celery worker (exit if so)
 if settings.CELERY_WORKER:
@@ -207,6 +228,129 @@ async def health_check():
         "timestamp": datetime.now().isoformat(),
         "version": "1.0.0"
     }
+
+# Temporary debug endpoint to verify server-side password hashing
+# Admin-protected password reset endpoints
+def get_admin_reset_token() -> str:
+    token = os.getenv("ADMIN_RESET_TOKEN")
+    return token or ""
+
+@app.post("/api/v1/auth/admin/reset-password")
+async def admin_reset_password(payload: dict, request: Request):
+    """Admin resets a user's password by email or user_id.
+    Protection: header X-Admin-Token must match ADMIN_RESET_TOKEN env var.
+    Body: { email?: string, user_id?: string, new_password: string }
+    """
+    try:
+        admin_token = request.headers.get("X-Admin-Token")
+        expected = get_admin_reset_token()
+        if not expected or admin_token != expected:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        email = payload.get("email")
+        user_id = payload.get("user_id")
+        new_password = payload.get("new_password")
+
+        if not new_password or not isinstance(new_password, str):
+            raise HTTPException(status_code=400, detail="new_password is required")
+
+        # Truncate to bcrypt 72-byte limit before hashing for consistency
+        new_password_effective = new_password.encode('utf-8')[:72].decode('utf-8', errors='ignore')
+        new_hash = hash_password(new_password_effective)
+
+        # Locate user
+        user = None
+        if user_id:
+            user = db_service.get_user_by_id(user_id)
+        elif email:
+            user = db_service.get_user_by_email(email)
+        else:
+            raise HTTPException(status_code=400, detail="Provide email or user_id")
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        target_id = user.get('id') if isinstance(user, dict) else user
+
+        conn = db_service.get_connection()
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    "UPDATE users SET password_hash = %s, is_verified = TRUE, updated_at = NOW() WHERE id = %s",
+                    (new_hash, str(target_id))
+                )
+                conn.commit()
+        finally:
+            conn.close()
+
+        return {
+            "message": "Password reset successfully",
+            "user_id": str(target_id),
+            "hash_len": len(new_hash)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"admin_reset_password error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.post("/api/v1/auth/admin/reset-password-random")
+async def admin_reset_password_random(payload: dict, request: Request):
+    """Admin resets a user's password to a random one and returns it.
+    Protection: header X-Admin-Token must match ADMIN_RESET_TOKEN env var.
+    Body: { email?: string, user_id?: string }
+    """
+    try:
+        admin_token = request.headers.get("X-Admin-Token")
+        expected = get_admin_reset_token()
+        if not expected or admin_token != expected:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        email = payload.get("email")
+        user_id = payload.get("user_id")
+
+        # Locate user
+        user = None
+        if user_id:
+            user = db_service.get_user_by_id(user_id)
+        elif email:
+            user = db_service.get_user_by_email(email)
+        else:
+            raise HTTPException(status_code=400, detail="Provide email or user_id")
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        target_id = user.get('id') if isinstance(user, dict) else user
+
+        # Generate random password
+        import secrets, string
+        alphabet = string.ascii_letters + string.digits
+        new_password = ''.join(secrets.choice(alphabet) for _ in range(12))
+        new_password_effective = new_password.encode('utf-8')[:72].decode('utf-8', errors='ignore')
+        new_hash = hash_password(new_password_effective)
+
+        conn = db_service.get_connection()
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    "UPDATE users SET password_hash = %s, is_verified = TRUE, updated_at = NOW() WHERE id = %s",
+                    (new_hash, str(target_id))
+                )
+                conn.commit()
+        finally:
+            conn.close()
+
+        return {
+            "message": "Password reset successfully",
+            "user_id": str(target_id),
+            "temporary_password": new_password
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"admin_reset_password_random error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 # ============================================================================
 # RECURRING PARENT-CHILD TASK SYSTEM
@@ -473,9 +617,17 @@ async def login(login_data: LoginRequest):
             logger.error(f"User {login_data.email} has no password hash - account needs password reset")
             raise HTTPException(status_code=401, detail="User account is not properly configured. Please contact administrator to reset your password.")
         
+        # Ensure password_hash is a string and not None
+        if not isinstance(password_hash, str):
+            logger.error(f"User {login_data.email} has invalid password hash type: {type(password_hash)}")
+            raise HTTPException(status_code=401, detail="User account is not properly configured. Please contact administrator to reset your password.")
+        
+        # Log hash info for debugging (first 20 chars only)
+        logger.debug(f"Password hash length: {len(password_hash)}, starts with: {password_hash[:20]}")
+        
         # Verify the provided password against the stored hash
         if not verify_password(login_data.password, password_hash):
-            logger.warning(f"Invalid password attempt for user: {login_data.email}")
+            logger.warning(f"Invalid password attempt for user: {login_data.email} (hash length: {len(password_hash) if password_hash else 0})")
             raise HTTPException(status_code=401, detail="Invalid email/employee ID or password")
         
         # Check if user is active
@@ -484,16 +636,23 @@ async def login(login_data: LoginRequest):
             raise HTTPException(status_code=401, detail="User account is inactive")
         
         # Build user response (exclude password_hash)
+        created_at = None
+        if user.get('created_at'):
+            if hasattr(user['created_at'], 'isoformat'):
+                created_at = user['created_at'].isoformat()
+            elif isinstance(user['created_at'], str):
+                created_at = user['created_at']
+        
         user_dict = {
-            "id": str(user['id']),
+            "id": str(user.get('id', '')),
             "employee_id": user.get('employee_id'),
-            "email": user['email'],
-            "first_name": user['first_name'],
-            "last_name": user['last_name'],
-            "role": user['role'],
+            "email": user.get('email', ''),
+            "first_name": user.get('first_name', ''),
+            "last_name": user.get('last_name', ''),
+            "role": user.get('role', 'user'),
             "department": user.get('department_id'),
-            "is_active": user['is_active'],
-            "created_at": user['created_at'].isoformat() if user.get('created_at') else None
+            "is_active": user.get('is_active', True),
+            "created_at": created_at
         }
         
         logger.info(f"Successful login for user: {login_data.email}")
@@ -506,7 +665,9 @@ async def login(login_data: LoginRequest):
         raise
     except Exception as e:
         logger.error(f"Login error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Internal server error")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.post("/api/v1/auth/change-password")
 async def change_password(password_data: dict):
