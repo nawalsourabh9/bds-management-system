@@ -19,6 +19,7 @@ import {
   GitBranch,
   Workflow,
   Brain,
+  Calendar as CalendarIcon,
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
@@ -32,6 +33,11 @@ const menuItems = [
     title: "Tasks",
     icon: ClipboardList,
     path: "/tasks"
+  },
+  {
+    title: "Calendar",
+    icon: CalendarIcon,
+    path: "/calendar"
   },
   {
     title: "Users",

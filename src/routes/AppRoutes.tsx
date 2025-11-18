@@ -29,6 +29,7 @@ import EmailTest from "@/pages/EmailTest";
 import InviteUser from "@/pages/InviteUser";
 import NotFound from "@/pages/NotFound";
 import ChangePassword from "@/pages/ChangePassword";
+import CalendarPage from "@/pages/Calendar";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
@@ -125,6 +126,7 @@ export const AppRoutes = () => {
       
       {[
         { path: "/tasks", element: <Tasks /> },
+        { path: "/calendar", element: <CalendarPage /> },
         { path: "/documents", element: <Documents /> },
         { path: "/non-conformances", element: <NonConformances /> },
         { path: "/audits", element: <Audits /> },
