@@ -19,9 +19,6 @@ from fastapi import Request
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Password hashing context
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 # Password utility functions
 def _prepare_password_bytes(password: str) -> bytes:
     if not password or not isinstance(password, str):

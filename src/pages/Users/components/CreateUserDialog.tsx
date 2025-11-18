@@ -163,7 +163,10 @@ export const CreateUserDialog = ({ isOpen, setIsOpen, onUserCreated }: CreateUse
     setLoading(true);
 
     try {
-      const [firstName, lastName] = values.name.split(' ', 2);
+      // Split name: first word is first_name, rest is last_name
+      const nameParts = values.name.trim().split(' ');
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || '';
       
       // Use sub-department ID if selected, otherwise use main department ID
       const finalDepartmentId = values.subDepartment || values.department;
@@ -172,7 +175,7 @@ export const CreateUserDialog = ({ isOpen, setIsOpen, onUserCreated }: CreateUse
         employee_id: values.employeeId,
         email: values.email,
         first_name: firstName,
-        last_name: lastName || "",
+        last_name: lastName,
         role: values.role,
         department_id: finalDepartmentId || null,
         position_id: values.position || null,
