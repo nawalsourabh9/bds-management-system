@@ -19,6 +19,131 @@ from fastapi import Request
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Helper function to get admin/manager/superadmin users for notifications
+def get_admin_users_for_notification():
+    """Get all users with admin, manager, or superadmin roles for notifications"""
+    conn = None
+    try:
+        conn = db_service.get_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT id, email, first_name, last_name, role
+                FROM users
+                WHERE role IN ('admin', 'manager', 'superadmin') 
+                AND is_active = TRUE
+            """)
+            admin_users = cur.fetchall()
+            return [dict(user) for user in admin_users]
+    except Exception as e:
+        logger.error(f"Error fetching admin users for notifications: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
+
+# Helper function to notify admins/managers/superadmins
+def notify_admins(title: str, message: str, notification_type: str = 'info'):
+    """Send notification to all admins, managers, and superadmins"""
+    try:
+        admin_users = get_admin_users_for_notification()
+        for admin_user in admin_users:
+            try:
+                db_service.create_notification(
+                    user_id=str(admin_user['id']),
+                    title=title,
+                    message=message,
+                    notification_type=notification_type
+                )
+            except Exception as e:
+                logger.error(f"Failed to create notification for admin {admin_user['id']}: {e}")
+                # Continue with other admins even if one fails
+    except Exception as e:
+        logger.error(f"Error notifying admins: {e}")
+        # Don't fail the main operation if notification fails
+
+# Helper function to get supervisor (reports_to) for a user
+def get_user_supervisor(user_id: str):
+    """Get the supervisor (reports_to) user_id for a given user"""
+    try:
+        conn = db_service.get_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT reports_to_id
+                FROM users
+                WHERE id = %s AND is_active = TRUE
+            """, (user_id,))
+            result = cur.fetchone()
+            return str(result['reports_to_id']) if result and result.get('reports_to_id') else None
+    except Exception as e:
+        logger.error(f"Error fetching supervisor for user {user_id}: {e}")
+        return None
+    finally:
+        conn.close()
+
+# Helper function to notify task assignee, their supervisor, and admins about task changes
+def notify_task_update(task_id: str, change_type: str, change_details: str, old_value: str = None, new_value: str = None):
+    """Notify assignee, their supervisor, and admins about task updates"""
+    try:
+        # Get task details
+        task = db_service.get_task_by_id(task_id)
+        if not task:
+            return
+        
+        task_title = task.get('title', 'Unknown Task')
+        assignee_id = task.get('assignee_id')
+        
+        # Build notification message
+        if old_value and new_value:
+            message = f"Task '{task_title}' {change_details}: Changed from '{old_value}' to '{new_value}'."
+        else:
+            message = f"Task '{task_title}' {change_details}."
+        
+        # Notify assignee if task is assigned
+        if assignee_id:
+            try:
+                db_service.create_notification(
+                    user_id=str(assignee_id),
+                    title=f"Task {change_type}",
+                    message=message,
+                    notification_type='info'
+                )
+                
+                # Also notify assignee's supervisor (reports_to)
+                supervisor_id = get_user_supervisor(str(assignee_id))
+                if supervisor_id:
+                    try:
+                        # Get assignee name for supervisor notification
+                        assignee_info = db_service.execute_query("""
+                            SELECT CONCAT(first_name, ' ', last_name) as name
+                            FROM users WHERE id = %s
+                        """, (assignee_id,))
+                        assignee_name = assignee_info[0]['name'] if assignee_info and len(assignee_info) > 0 else 'Your team member'
+                        
+                        supervisor_message = f"Task '{task_title}' assigned to {assignee_name} {change_details}."
+                        if old_value and new_value:
+                            supervisor_message = f"Task '{task_title}' assigned to {assignee_name} {change_details}: Changed from '{old_value}' to '{new_value}'."
+                        
+                        db_service.create_notification(
+                            user_id=supervisor_id,
+                            title=f"Team Member Task {change_type}",
+                            message=supervisor_message,
+                            notification_type='info'
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to notify supervisor {supervisor_id}: {e}")
+            except Exception as e:
+                logger.error(f"Failed to notify assignee {assignee_id}: {e}")
+        
+        # Notify admins
+        notify_admins(
+            title=f"Task {change_type}",
+            message=message,
+            notification_type='info'
+        )
+    except Exception as e:
+        logger.error(f"Error notifying task update: {e}")
+        # Don't fail the main operation if notification fails
+
 # Password utility functions
 def _prepare_password_bytes(password: str) -> bytes:
     if not password or not isinstance(password, str):
@@ -905,6 +1030,19 @@ async def create_user(user_data: dict):
                 ))
                 new_user = cur.fetchone()
                 conn.commit()
+                
+                # Notify admins/managers/superadmins about new user creation
+                try:
+                    user_name = f"{user_data['first_name']} {user_data['last_name']}"
+                    notify_admins(
+                        title="New User Created",
+                        message=f"New user '{user_name}' ({user_data['email']}) with role '{user_data['role']}' has been created.",
+                        notification_type='info'
+                    )
+                except Exception as notification_error:
+                    logger.error(f"Failed to send notification for user creation: {notification_error}")
+                    # Don't fail the operation if notification fails
+                
                 return {
                     "user": dict(new_user), 
                     "message": "User created successfully",
@@ -932,6 +1070,19 @@ async def update_user(user_id: str, user_data: dict):
         success = db_service.update_user(user_id, user_data)
         if success:
             updated_user = db_service.get_user_by_id(user_id)
+            
+            # Notify admins/managers/superadmins about user update
+            try:
+                user_name = f"{updated_user.get('first_name', '')} {updated_user.get('last_name', '')}"
+                notify_admins(
+                    title="User Updated",
+                    message=f"User '{user_name}' ({updated_user.get('email', '')}) has been updated.",
+                    notification_type='info'
+                )
+            except Exception as notification_error:
+                logger.error(f"Failed to send notification for user update: {notification_error}")
+                # Don't fail the operation if notification fails
+            
             return {"user": updated_user, "message": "User updated successfully"}
         else:
             raise HTTPException(status_code=400, detail="No valid fields to update")
@@ -1027,6 +1178,18 @@ async def create_department(department_data: dict):
                 ))
                 new_department = cur.fetchone()
                 conn.commit()
+                
+                # Notify admins/managers/superadmins about new department
+                try:
+                    notify_admins(
+                        title="New Department Created",
+                        message=f"New department '{department_data['name']}' has been created.",
+                        notification_type='info'
+                    )
+                except Exception as notification_error:
+                    logger.error(f"Failed to send notification for department creation: {notification_error}")
+                    # Don't fail the operation if notification fails
+                
                 return {"department": dict(new_department), "message": "Department created successfully"}
         finally:
             conn.close()
@@ -1050,6 +1213,19 @@ async def update_department(department_id: str, department_data: dict):
         success = db_service.update_department(department_id, department_data)
         if success:
             updated_department = db_service.get_department_by_id(department_id)
+            
+            # Notify admins/managers/superadmins about department update
+            try:
+                dept_name = updated_department.get('name', 'Unknown')
+                notify_admins(
+                    title="Department Updated",
+                    message=f"Department '{dept_name}' has been updated.",
+                    notification_type='info'
+                )
+            except Exception as notification_error:
+                logger.error(f"Failed to send notification for department update: {notification_error}")
+                # Don't fail the operation if notification fails
+            
             return {"department": updated_department, "message": "Department updated successfully"}
         else:
             raise HTTPException(status_code=400, detail="No valid fields to update")
@@ -1081,9 +1257,23 @@ async def delete_department(department_id: str):
                 detail="Cannot delete department. Move or delete users first."
             )
         
+        # Get department name before deletion for notification
+        dept_name = existing_department.get('name', 'Unknown') if existing_department else 'Unknown'
+        
         # Delete department
         success = db_service.delete_department(department_id)
         if success:
+            # Notify admins/managers/superadmins about department deletion
+            try:
+                notify_admins(
+                    title="Department Deleted",
+                    message=f"Department '{dept_name}' has been deleted.",
+                    notification_type='warning'
+                )
+            except Exception as notification_error:
+                logger.error(f"Failed to send notification for department deletion: {notification_error}")
+                # Don't fail the operation if notification fails
+            
             return {"message": "Department deleted successfully"}
         else:
             raise HTTPException(status_code=400, detail="Failed to delete department")
@@ -1129,6 +1319,18 @@ async def create_position(position_data: dict):
                 raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
         
         new_position = db_service.create_position(position_data)
+        
+        # Notify admins/managers/superadmins about new position
+        try:
+            notify_admins(
+                title="New Position Created",
+                message=f"New position '{position_data['name']}' has been created.",
+                notification_type='info'
+            )
+        except Exception as notification_error:
+            logger.error(f"Failed to send notification for position creation: {notification_error}")
+            # Don't fail the operation if notification fails
+        
         return {"position": new_position, "message": "Position created successfully"}
     except HTTPException:
         raise
@@ -1147,6 +1349,19 @@ async def update_position(position_id: str, position_data: dict):
         success = db_service.update_position(position_id, position_data)
         if success:
             updated_position = db_service.get_position_by_id(position_id)
+            
+            # Notify admins/managers/superadmins about position update
+            try:
+                position_name = updated_position.get('name', 'Unknown')
+                notify_admins(
+                    title="Position Updated",
+                    message=f"Position '{position_name}' has been updated.",
+                    notification_type='info'
+                )
+            except Exception as notification_error:
+                logger.error(f"Failed to send notification for position update: {notification_error}")
+                # Don't fail the operation if notification fails
+            
             return {"position": updated_position, "message": "Position updated successfully"}
         else:
             raise HTTPException(status_code=400, detail="No valid fields to update")
@@ -1164,8 +1379,22 @@ async def delete_position(position_id: str):
         if not existing_position:
             raise HTTPException(status_code=404, detail="Position not found")
         
+        # Get position name before deletion for notification
+        position_name = existing_position.get('name', 'Unknown') if existing_position else 'Unknown'
+        
         success = db_service.delete_position(position_id)
         if success:
+            # Notify admins/managers/superadmins about position deletion
+            try:
+                notify_admins(
+                    title="Position Deleted",
+                    message=f"Position '{position_name}' has been deleted.",
+                    notification_type='warning'
+                )
+            except Exception as notification_error:
+                logger.error(f"Failed to send notification for position deletion: {notification_error}")
+                # Don't fail the operation if notification fails
+            
             return {"message": "Position deleted successfully"}
         else:
             raise HTTPException(status_code=400, detail="Failed to delete position")
@@ -1328,7 +1557,7 @@ async def create_task(task_data: dict):
                 child_task_id = db_service.create_task(child_task_data)
                 logger.info(f"First child task created successfully: {child_task_id}")
                 
-                # Create notification for the assignee
+                # Create notification for the assignee and their supervisor
                 try:
                     assignee_name = db_service.execute_query("""
                         SELECT CONCAT(first_name, ' ', last_name) as name
@@ -1349,6 +1578,24 @@ async def create_task(task_data: dict):
                         notification_type='info'
                     )
                     logger.info(f"Notification created for assignee {first_child_data['assignee_id']}")
+                    
+                    # Also notify assignee's supervisor
+                    supervisor_id = get_user_supervisor(str(first_child_data['assignee_id']))
+                    if supervisor_id:
+                        try:
+                            supervisor_message = f"New task '{task_db_data['title']}' has been assigned to {assignee_display_name}"
+                            if first_child_data['due_date']:
+                                supervisor_message += f" (Due: {first_child_data['due_date']})"
+                            
+                            db_service.create_notification(
+                                user_id=supervisor_id,
+                                title="New Task Assigned to Team Member",
+                                message=supervisor_message,
+                                notification_type='info'
+                            )
+                            logger.info(f"Notification created for supervisor {supervisor_id}")
+                        except Exception as e:
+                            logger.error(f"Failed to notify supervisor: {e}")
                 except Exception as notification_error:
                     logger.error(f"Failed to create notification: {notification_error}")
                     # Don't fail the entire operation if notification creation fails
@@ -1379,9 +1626,71 @@ async def create_task(task_data: dict):
                         notification_type='info'
                     )
                     logger.info(f"Notification created for assignee {task_db_data['assignee_id']}")
+                    
+                    # Also notify assignee's supervisor
+                    supervisor_id = get_user_supervisor(str(task_db_data['assignee_id']))
+                    if supervisor_id:
+                        try:
+                            supervisor_message = f"New task '{task_db_data['title']}' has been assigned to {assignee_display_name}"
+                            if task_db_data.get('due_date'):
+                                supervisor_message += f" (Due: {task_db_data['due_date']})"
+                            
+                            db_service.create_notification(
+                                user_id=supervisor_id,
+                                title="New Task Assigned to Team Member",
+                                message=supervisor_message,
+                                notification_type='info'
+                            )
+                            logger.info(f"Notification created for supervisor {supervisor_id}")
+                        except Exception as e:
+                            logger.error(f"Failed to notify supervisor: {e}")
                 except Exception as e:
                     logger.error(f"Failed to create notification for assignee: {e}")
                     # Don't fail the entire operation if notification creation fails
+            
+            # Notify admins/managers/superadmins and supervisor about new task creation
+            try:
+                task_title = task_db_data.get('title', 'Unknown Task')
+                assignee_name = 'Unassigned'
+                assignee_id = task_db_data.get('assignee_id')
+                
+                if assignee_id:
+                    assignee_info = db_service.execute_query("""
+                        SELECT CONCAT(first_name, ' ', last_name) as name
+                        FROM users WHERE id = %s
+                    """, (assignee_id,))
+                    if assignee_info and len(assignee_info) > 0:
+                        assignee_name = assignee_info[0]['name']
+                    
+                    # Notify assignee's supervisor
+                    supervisor_id = get_user_supervisor(str(assignee_id))
+                    if supervisor_id:
+                        try:
+                            due_date_str = ""
+                            if task_db_data.get('due_date'):
+                                due_date_str = f" (Due: {task_db_data['due_date']})"
+                            
+                            db_service.create_notification(
+                                user_id=supervisor_id,
+                                title="New Task Assigned to Team Member",
+                                message=f"New task '{task_title}' has been assigned to {assignee_name}{due_date_str}.",
+                                notification_type='info'
+                            )
+                        except Exception as e:
+                            logger.error(f"Failed to notify supervisor for task creation: {e}")
+                
+                due_date_str = ""
+                if task_db_data.get('due_date'):
+                    due_date_str = f" (Due: {task_db_data['due_date']})"
+                
+                notify_admins(
+                    title="New Task Created",
+                    message=f"New task '{task_title}' has been created and assigned to '{assignee_name}'{due_date_str}.",
+                    notification_type='info'
+                )
+            except Exception as notification_error:
+                logger.error(f"Failed to send notification to admins for task creation: {notification_error}")
+                # Don't fail the operation if notification fails
         
         return {"message": "Task created successfully", "id": str(task_id)}
     except HTTPException:
@@ -1492,9 +1801,39 @@ async def partial_update_task(task_id: str, task_data: dict):
         # Validate field values
         await validate_task_update_fields(task_db_data)
         
+        # Get old task values for notifications
+        old_task = db_service.get_task_by_id(task_id)
+        if not old_task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
         success = db_service.update_task(task_id, task_db_data)
         if not success:
             raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Send notifications for changed fields
+        try:
+            for field, new_value in task_db_data.items():
+                old_value = old_task.get(field)
+                if old_value != new_value:
+                    field_display_names = {
+                        'status': 'status',
+                        'priority': 'priority',
+                        'due_date': 'due date',
+                        'assignee_id': 'assignee',
+                        'title': 'title',
+                        'description': 'description'
+                    }
+                    field_name = field_display_names.get(field, field)
+                    notify_task_update(
+                        task_id=task_id,
+                        change_type="Updated",
+                        change_details=f"has been updated - {field_name} changed",
+                        old_value=str(old_value) if old_value else None,
+                        new_value=str(new_value) if new_value else None
+                    )
+        except Exception as notification_error:
+            logger.error(f"Failed to send notifications for task update: {notification_error}")
+            # Don't fail the operation if notification fails
         
         return {
             "message": "Task partially updated successfully",
@@ -1551,9 +1890,39 @@ async def full_update_task(task_id: str, task_data: dict):
         # Validate field values
         await validate_task_update_fields(task_db_data)
         
+        # Get old task values for notifications
+        old_task = db_service.get_task_by_id(task_id)
+        if not old_task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
         success = db_service.update_task(task_id, task_db_data)
         if not success:
             raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Send notifications for changed fields
+        try:
+            for field, new_value in task_db_data.items():
+                old_value = old_task.get(field)
+                if old_value != new_value:
+                    field_display_names = {
+                        'status': 'status',
+                        'priority': 'priority',
+                        'due_date': 'due date',
+                        'assignee_id': 'assignee',
+                        'title': 'title',
+                        'description': 'description'
+                    }
+                    field_name = field_display_names.get(field, field)
+                    notify_task_update(
+                        task_id=task_id,
+                        change_type="Updated",
+                        change_details=f"has been updated - {field_name} changed",
+                        old_value=str(old_value) if old_value else None,
+                        new_value=str(new_value) if new_value else None
+                    )
+        except Exception as notification_error:
+            logger.error(f"Failed to send notifications for task update: {notification_error}")
+            # Don't fail the operation if notification fails
         
         # Check if task was marked as completed and is a child task
         if 'status' in task_db_data and task_db_data['status'] == 'completed':
@@ -1640,10 +2009,29 @@ async def update_task_status(task_id: str, status_data: dict):
         
         await validate_task_update_fields({'status': status_data['status']})
         
+        # Get old status for notification
+        old_task = db_service.get_task_by_id(task_id)
+        if not old_task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        old_status = old_task.get('status')
+        
         # Update the task status
         success = db_service.update_task(task_id, {'status': status_data['status']})
         if not success:
             raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Notify about status change
+        if old_status != status_data['status']:
+            try:
+                notify_task_update(
+                    task_id=task_id,
+                    change_type="Status Changed",
+                    change_details="status has been changed",
+                    old_value=old_status,
+                    new_value=status_data['status']
+                )
+            except Exception as notification_error:
+                logger.error(f"Failed to send notification for status change: {notification_error}")
         
         # If marking as completed, check if this is a child task and trigger next generation
         if status_data['status'] == 'completed':
@@ -1707,9 +2095,96 @@ async def update_task_assignee(task_id: str, assignee_data: dict):
         if 'assignee' not in assignee_data:
             raise HTTPException(status_code=400, detail="Assignee field is required")
         
+        # Get old assignee for notification
+        old_task = db_service.get_task_by_id(task_id)
+        if not old_task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        old_assignee_id = old_task.get('assignee_id')
+        
         success = db_service.update_task(task_id, {'assignee_id': assignee_data['assignee']})
         if not success:
             raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Notify old and new assignees, plus admins
+        try:
+            task = db_service.get_task_by_id(task_id)
+            task_title = task.get('title', 'Unknown Task') if task else 'Unknown Task'
+            
+            # Notify old assignee if different
+            if old_assignee_id and str(old_assignee_id) != str(assignee_data['assignee']):
+                try:
+                    old_assignee_name = "You"
+                    old_assignee_info = db_service.execute_query("""
+                        SELECT CONCAT(first_name, ' ', last_name) as name
+                        FROM users WHERE id = %s
+                    """, (old_assignee_id,))
+                    if old_assignee_info and len(old_assignee_info) > 0:
+                        old_assignee_name = old_assignee_info[0]['name']
+                    
+                    db_service.create_notification(
+                        user_id=str(old_assignee_id),
+                        title="Task Reassigned",
+                        message=f"Task '{task_title}' has been reassigned from you.",
+                        notification_type='info'
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to notify old assignee: {e}")
+            
+            # Notify new assignee
+            try:
+                new_assignee_name = "You"
+                new_assignee_info = db_service.execute_query("""
+                    SELECT CONCAT(first_name, ' ', last_name) as name
+                    FROM users WHERE id = %s
+                """, (assignee_data['assignee'],))
+                if new_assignee_info and len(new_assignee_info) > 0:
+                    new_assignee_name = new_assignee_info[0]['name']
+                
+                db_service.create_notification(
+                    user_id=str(assignee_data['assignee']),
+                    title="Task Assigned",
+                    message=f"Task '{task_title}' has been assigned to you.",
+                    notification_type='info'
+                )
+                
+                # Also notify new assignee's supervisor
+                new_supervisor_id = get_user_supervisor(str(assignee_data['assignee']))
+                if new_supervisor_id:
+                    try:
+                        db_service.create_notification(
+                            user_id=new_supervisor_id,
+                            title="Task Assigned to Team Member",
+                            message=f"Task '{task_title}' has been assigned to {new_assignee_name}.",
+                            notification_type='info'
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to notify new assignee's supervisor: {e}")
+            except Exception as e:
+                logger.error(f"Failed to notify new assignee: {e}")
+            
+            # Notify admins
+            old_assignee_display = "Unassigned"
+            new_assignee_display = "Unassigned"
+            if old_assignee_id:
+                old_info = db_service.execute_query("""
+                    SELECT CONCAT(first_name, ' ', last_name) as name FROM users WHERE id = %s
+                """, (old_assignee_id,))
+                if old_info and len(old_info) > 0:
+                    old_assignee_display = old_info[0]['name']
+            if assignee_data['assignee']:
+                new_info = db_service.execute_query("""
+                    SELECT CONCAT(first_name, ' ', last_name) as name FROM users WHERE id = %s
+                """, (assignee_data['assignee'],))
+                if new_info and len(new_info) > 0:
+                    new_assignee_display = new_info[0]['name']
+            
+            notify_admins(
+                title="Task Reassigned",
+                message=f"Task '{task_title}' has been reassigned from '{old_assignee_display}' to '{new_assignee_display}'.",
+                notification_type='info'
+            )
+        except Exception as notification_error:
+            logger.error(f"Failed to send notifications for assignee change: {notification_error}")
         
         return {
             "message": "Task assignee updated successfully",
@@ -1730,9 +2205,28 @@ async def update_task_priority(task_id: str, priority_data: dict):
         
         await validate_task_update_fields({'priority': priority_data['priority']})
         
+        # Get old priority for notification
+        old_task = db_service.get_task_by_id(task_id)
+        if not old_task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        old_priority = old_task.get('priority')
+        
         success = db_service.update_task(task_id, {'priority': priority_data['priority']})
         if not success:
             raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Notify about priority change
+        if old_priority != priority_data['priority']:
+            try:
+                notify_task_update(
+                    task_id=task_id,
+                    change_type="Priority Changed",
+                    change_details="priority has been changed",
+                    old_value=old_priority,
+                    new_value=priority_data['priority']
+                )
+            except Exception as notification_error:
+                logger.error(f"Failed to send notification for priority change: {notification_error}")
         
         return {
             "message": "Task priority updated successfully",
@@ -1755,9 +2249,28 @@ async def update_task_due_date(task_id: str, due_date_data: dict):
         
         await validate_task_update_fields({'due_date': due_date_data['dueDate']})
         
+        # Get old due date for notification
+        old_task = db_service.get_task_by_id(task_id)
+        if not old_task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        old_due_date = old_task.get('due_date')
+        
         success = db_service.update_task(task_id, {'due_date': due_date_data['dueDate']})
         if not success:
             raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Notify about due date change
+        if str(old_due_date) != str(due_date_data['dueDate']):
+            try:
+                notify_task_update(
+                    task_id=task_id,
+                    change_type="Due Date Changed",
+                    change_details="due date has been changed",
+                    old_value=str(old_due_date) if old_due_date else "Not set",
+                    new_value=str(due_date_data['dueDate']) if due_date_data['dueDate'] else "Not set"
+                )
+            except Exception as notification_error:
+                logger.error(f"Failed to send notification for due date change: {notification_error}")
         
         return {
             "message": "Task due date updated successfully",
@@ -1785,6 +2298,7 @@ async def delete_task(task_id: str):
             raise HTTPException(status_code=404, detail="Task not found")
         
         task_data = task[0]
+        task_title = task_data.get('title', 'Unknown Task')
         
         # Check if this is a parent task
         if task_data.get('is_parent_task'):
@@ -1806,6 +2320,51 @@ async def delete_task(task_id: str):
         success = db_service.delete_task(task_id)
         if not success:
             raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Notify admins and assignee about task deletion
+        try:
+            assignee_id = task_data.get('assignee_id')
+            
+            # Notify assignee if task was assigned
+            if assignee_id:
+                try:
+                    db_service.create_notification(
+                        user_id=str(assignee_id),
+                        title="Task Deleted",
+                        message=f"Task '{task_title}' has been deleted.",
+                        notification_type='warning'
+                    )
+                    
+                    # Also notify assignee's supervisor
+                    supervisor_id = get_user_supervisor(str(assignee_id))
+                    if supervisor_id:
+                        try:
+                            assignee_info = db_service.execute_query("""
+                                SELECT CONCAT(first_name, ' ', last_name) as name
+                                FROM users WHERE id = %s
+                            """, (assignee_id,))
+                            assignee_name = assignee_info[0]['name'] if assignee_info and len(assignee_info) > 0 else 'Your team member'
+                            
+                            db_service.create_notification(
+                                user_id=supervisor_id,
+                                title="Team Member Task Deleted",
+                                message=f"Task '{task_title}' assigned to {assignee_name} has been deleted.",
+                                notification_type='warning'
+                            )
+                        except Exception as e:
+                            logger.error(f"Failed to notify supervisor about task deletion: {e}")
+                except Exception as e:
+                    logger.error(f"Failed to notify assignee about task deletion: {e}")
+            
+            # Notify admins
+            notify_admins(
+                title="Task Deleted",
+                message=f"Task '{task_title}' has been deleted.",
+                notification_type='warning'
+            )
+        except Exception as notification_error:
+            logger.error(f"Failed to send notifications for task deletion: {notification_error}")
+            # Don't fail the operation if notification fails
         
         return {"message": "Task deleted successfully"}
     except HTTPException:
