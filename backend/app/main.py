@@ -114,7 +114,8 @@ def notify_task_update(task_id: str, change_type: str, change_details: str, old_
                     user_id=str(assignee_id),
                     title=f"Task {change_type}",
                     message=message,
-                    notification_type='info'
+                    notification_type='info',
+                    task_id=task_id
                 )
                 
                 # Also notify assignee's supervisor (reports_to)
@@ -136,7 +137,8 @@ def notify_task_update(task_id: str, change_type: str, change_details: str, old_
                             user_id=supervisor_id,
                             title=f"Team Member Task {change_type}",
                             message=supervisor_message,
-                            notification_type='info'
+                            notification_type='info',
+                            task_id=task_id
                         )
                     except Exception as e:
                         logger.error(f"Failed to notify supervisor {supervisor_id}: {e}")
@@ -1464,6 +1466,9 @@ async def create_task(task_data: dict):
             if not task_data.get(field):
                 raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
         
+        # Get creator ID from request or use default
+        creator_id = task_data.get('created_by') or task_data.get('creator_id') or '550e8400-e29b-41d4-a716-446655440100'
+        
         # Convert task data to database format
         task_db_data = {
             'title': task_data['title'],
@@ -1471,7 +1476,7 @@ async def create_task(task_data: dict):
             'priority': task_data.get('priority', 'medium'),
             'status': task_data.get('status', 'pending'),
             'assignee_id': task_data.get('assignee') or task_data.get('assigned_to'),  # Handle both field names
-            'created_by': '550e8400-e29b-41d4-a716-446655440100',  # Super admin user
+            'created_by': creator_id,  # Use creator from request or default
             'due_date': task_data.get('due_date') or task_data.get('dueDate'),  # Handle both field names
             'start_date': task_data.get('start_date') or task_data.get('startDate'),  # Handle both field names
             'end_date': task_data.get('end_date') or task_data.get('endDate'),  # Handle both field names
@@ -1518,6 +1523,30 @@ async def create_task(task_data: dict):
             # Parent task will have the default documents and customer info
         
         task_id = db_service.create_task(task_db_data)
+        
+        # Notify creator about task creation
+        try:
+            task_title = task_db_data.get('title', 'Unknown Task')
+            creator_notification_message = f"You have successfully created task '{task_title}'."
+            if task_db_data.get('assignee_id'):
+                assignee_info = db_service.execute_query("""
+                    SELECT CONCAT(first_name, ' ', last_name) as name
+                    FROM users WHERE id = %s
+                """, (task_db_data['assignee_id'],))
+                assignee_name = assignee_info[0]['name'] if assignee_info and len(assignee_info) > 0 else 'User'
+                creator_notification_message += f" It has been assigned to {assignee_name}."
+            
+            db_service.create_notification(
+                user_id=str(creator_id),
+                title="Task Created Successfully",
+                message=creator_notification_message,
+                notification_type='success',
+                task_id=str(task_id)
+            )
+            logger.info(f"Notification created for creator {creator_id}")
+        except Exception as creator_notification_error:
+            logger.error(f"Failed to notify creator: {creator_notification_error}")
+            # Don't fail the operation if notification fails
         
         # For recurring tasks, MANDATORY first child task creation
         if task_db_data.get('is_recurring'):
@@ -1584,7 +1613,8 @@ async def create_task(task_data: dict):
                         user_id=first_child_data['assignee_id'],
                         title=notification_title,
                         message=notification_message,
-                        notification_type='info'
+                        notification_type='info',
+                        task_id=str(child_task_id)
                     )
                     logger.info(f"Notification created for assignee {first_child_data['assignee_id']}")
                     
@@ -1600,7 +1630,8 @@ async def create_task(task_data: dict):
                                 user_id=supervisor_id,
                                 title="New Task Assigned to Team Member",
                                 message=supervisor_message,
-                                notification_type='info'
+                                notification_type='info',
+                                task_id=str(child_task_id)
                             )
                             logger.info(f"Notification created for supervisor {supervisor_id}")
                         except Exception as e:
@@ -1632,7 +1663,8 @@ async def create_task(task_data: dict):
                         user_id=task_db_data['assignee_id'],
                         title=notification_title,
                         message=notification_message,
-                        notification_type='info'
+                        notification_type='info',
+                        task_id=str(task_id)
                     )
                     logger.info(f"Notification created for assignee {task_db_data['assignee_id']}")
                     
@@ -1648,7 +1680,8 @@ async def create_task(task_data: dict):
                                 user_id=supervisor_id,
                                 title="New Task Assigned to Team Member",
                                 message=supervisor_message,
-                                notification_type='info'
+                                notification_type='info',
+                                task_id=str(task_id)
                             )
                             logger.info(f"Notification created for supervisor {supervisor_id}")
                         except Exception as e:
@@ -1683,7 +1716,8 @@ async def create_task(task_data: dict):
                                 user_id=supervisor_id,
                                 title="New Task Assigned to Team Member",
                                 message=f"New task '{task_title}' has been assigned to {assignee_name}{due_date_str}.",
-                                notification_type='info'
+                                notification_type='info',
+                                task_id=str(task_id)
                             )
                         except Exception as e:
                             logger.error(f"Failed to notify supervisor for task creation: {e}")
@@ -1983,7 +2017,8 @@ async def full_update_task(task_id: str, task_data: dict):
                                         user_id=task_details.get('assignee_id'),
                                         title=notification_title,
                                         message=notification_message,
-                                        notification_type='info'
+                                        notification_type='info',
+                                        task_id=str(child_task_id)
                                     )
                                     logger.info(f"Notification created for assignee {task_details.get('assignee_id')}")
                                 except Exception as notification_error:
@@ -2134,7 +2169,8 @@ async def update_task_assignee(task_id: str, assignee_data: dict):
                         user_id=str(old_assignee_id),
                         title="Task Reassigned",
                         message=f"Task '{task_title}' has been reassigned from you.",
-                        notification_type='info'
+                        notification_type='info',
+                        task_id=task_id
                     )
                 except Exception as e:
                     logger.error(f"Failed to notify old assignee: {e}")
@@ -2153,7 +2189,8 @@ async def update_task_assignee(task_id: str, assignee_data: dict):
                     user_id=str(assignee_data['assignee']),
                     title="Task Assigned",
                     message=f"Task '{task_title}' has been assigned to you.",
-                    notification_type='info'
+                    notification_type='info',
+                    task_id=task_id
                 )
                 
                 # Also notify new assignee's supervisor
@@ -2164,7 +2201,8 @@ async def update_task_assignee(task_id: str, assignee_data: dict):
                             user_id=new_supervisor_id,
                             title="Task Assigned to Team Member",
                             message=f"Task '{task_title}' has been assigned to {new_assignee_name}.",
-                            notification_type='info'
+                            notification_type='info',
+                            task_id=task_id
                         )
                     except Exception as e:
                         logger.error(f"Failed to notify new assignee's supervisor: {e}")
@@ -2358,7 +2396,8 @@ async def delete_task(task_id: str):
                                 user_id=supervisor_id,
                                 title="Team Member Task Deleted",
                                 message=f"Task '{task_title}' assigned to {assignee_name} has been deleted.",
-                                notification_type='warning'
+                                notification_type='warning',
+                                task_id=task_id
                             )
                         except Exception as e:
                             logger.error(f"Failed to notify supervisor about task deletion: {e}")
@@ -2628,24 +2667,49 @@ async def create_notification(notification_data: dict):
 async def get_notifications(user_id: str = None):
     """Get notifications for the current user"""
     try:
-        if user_id:
-            # Get notifications for specific user
-            result = db_service.get_notifications_by_user(user_id)
-        else:
-            # Get all notifications (in real app, filter by user_id from token)
-            result = db_service.execute_query("""
-                SELECT n.*, u.first_name, u.last_name, u.email
-                FROM notifications n
-                LEFT JOIN users u ON n.user_id = u.id
-                ORDER BY n.created_at DESC
-                LIMIT 50;
-            """)
+        # Allow None but log warning - frontend should always send user_id
+        if not user_id:
+            logger.warning("get_notifications called without user_id parameter")
+            return {
+                "notifications": [],
+                "count": 0,
+                "timestamp": datetime.now().isoformat()
+            }
+        
+        # Get notifications for specific user
+        result = db_service.get_notifications_by_user(user_id)
+        
+        # Ensure all fields are properly formatted
+        formatted_result = []
+        for notification in (result or []):
+            created_at = notification.get('created_at')
+            if isinstance(created_at, datetime):
+                created_at_str = created_at.isoformat()
+            elif created_at:
+                created_at_str = str(created_at)
+            else:
+                created_at_str = datetime.now().isoformat()
+            
+            formatted_notification = {
+                'id': str(notification.get('id', '')),
+                'title': notification.get('title', ''),
+                'message': notification.get('message', ''),
+                'type': notification.get('type', 'info'),
+                'is_read': bool(notification.get('is_read', False)),
+                'created_at': created_at_str,
+                'task_id': notification.get('task_id')  # Include task_id if present
+            }
+            formatted_result.append(formatted_notification)
+        
+        logger.info(f"Fetched {len(formatted_result)} notifications for user {user_id}")
         
         return {
-            "notifications": result,
-            "count": len(result) if result else 0,
+            "notifications": formatted_result,
+            "count": len(formatted_result),
             "timestamp": datetime.now().isoformat()
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching notifications: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

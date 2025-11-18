@@ -14,6 +14,7 @@ interface TasksContentProps {
   currentUserId: string | undefined;
   currentUserPermissions: any;
   teamMembers: TeamMember[];
+  highlightedTaskId?: string;
 }
 
 const TasksContent: React.FC<TasksContentProps> = ({
@@ -24,7 +25,8 @@ const TasksContent: React.FC<TasksContentProps> = ({
   isAdmin,
   currentUserId,
   currentUserPermissions,
-  teamMembers
+  teamMembers,
+  highlightedTaskId
 }) => {
   // Group tasks to show parent tasks and their instances together
   const groupedTasks = React.useMemo(() => {
@@ -85,6 +87,7 @@ const TasksContent: React.FC<TasksContentProps> = ({
           currentUserId={currentUserId}
           currentUserPermissions={currentUserPermissions}
           teamMembers={teamMembers}
+          highlightedTaskId={highlightedTaskId}
         />
       </CardContent>
     </Card>

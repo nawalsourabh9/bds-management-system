@@ -712,6 +712,7 @@ export const fastapiService = {
       customer_name: (taskData.customer_name ?? taskData.customerName) || null,
       start_date: taskData.start_date || taskData.startDate || null,
       end_date: taskData.end_date || taskData.endDate || null,
+      created_by: taskData.created_by || null, // Include creator ID if provided
     };
     // Remove null/undefined values
     Object.keys(payload).forEach(k => payload[k] === null || payload[k] === undefined ? delete payload[k] : null);

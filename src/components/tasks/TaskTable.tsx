@@ -31,6 +31,7 @@ interface TasksTableProps {
     email?: string;
     department?: string;
   }>;
+  highlightedTaskId?: string;
 }
 
 const TasksTable: React.FC<TasksTableProps> = ({ 
@@ -41,7 +42,8 @@ const TasksTable: React.FC<TasksTableProps> = ({
   isAdmin = true, // Default to admin for all users
   currentUserId = "1", 
   currentUserPermissions,
-  teamMembers = []
+  teamMembers = [],
+  highlightedTaskId
 }) => {
   const [viewingDocument, setViewingDocument] = useState<{
     task: Task,
@@ -182,6 +184,8 @@ const TasksTable: React.FC<TasksTableProps> = ({
                         task={task}
                         onViewTask={onViewTask}
                         onEditTask={onEditTask || (() => {})}
+                        isHighlighted={highlightedTaskId === task.id}
+                        rowId={`task-${task.id}`}
                         onDeleteTask={(taskId) => {
                           if (onDeleteTask) {
                             setTaskToDelete(taskId);

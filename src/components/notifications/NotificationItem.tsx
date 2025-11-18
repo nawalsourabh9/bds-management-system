@@ -19,6 +19,14 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
   
   const handleClick = () => {
     onMarkAsRead(notification.id);
+    
+    // If notification has a task_id, navigate to tasks page with task ID
+    if (notification.task_id) {
+      navigate(`/tasks?taskId=${notification.task_id}&filter=assigned`);
+      return;
+    }
+    
+    // Otherwise use actionUrl if available
     if (notification.actionUrl) {
       navigate(notification.actionUrl);
     }
@@ -56,9 +64,9 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
           </span>
         </div>
         <p className="text-sm text-muted-foreground mt-0.5 pb-1">{notification.message}</p>
-        {notification.actionUrl && (
+        {(notification.actionUrl || notification.task_id) && (
           <div className="flex items-center text-xs text-primary mt-1">
-            <span>View details</span>
+            <span>{notification.task_id ? 'View task' : 'View details'}</span>
             <ChevronRight className="h-3 w-3 ml-1" />
           </div>
         )}

@@ -31,12 +31,20 @@ class DatabaseService:
             logger.error(f"Database connection error: {e}")
             raise
 
-    def create_notification(self, user_id: str, title: str, message: str, notification_type: str = 'info'):
+    def create_notification(self, user_id: str, title: str, message: str, notification_type: str = 'info', task_id: str = None):
         """Create a new notification"""
         conn = None
         try:
             conn = self.get_connection()
             with conn.cursor() as cur:
+                # Check if task_id column exists, if not, store in message metadata
+                # For now, we'll store task_id in the message as JSON metadata if task_id is provided
+                final_message = message
+                if task_id:
+                    # Store task_id as metadata in message (we'll parse it in frontend)
+                    # Format: message|TASK_ID:task_id
+                    final_message = f"{message}|TASK_ID:{task_id}"
+                
                 cur.execute("""
                     INSERT INTO notifications (user_id, title, message, type, is_read, created_at)
                     VALUES (%(user_id)s, %(title)s, %(message)s, %(type)s, FALSE, NOW())
@@ -44,7 +52,7 @@ class DatabaseService:
                 """, {
                     "user_id": user_id,
                     "title": title,
-                    "message": message,
+                    "message": final_message,
                     "type": notification_type
                 })
                 notification_id = cur.fetchone()[0]
@@ -74,7 +82,17 @@ class DatabaseService:
                     LIMIT %(limit)s;
                 """, {"user_id": user_id, "limit": limit})
                 notifications = cur.fetchall()
-                return [dict(notification) for notification in notifications]
+                result = []
+                for notification in notifications:
+                    notif_dict = dict(notification)
+                    # Extract task_id from message if present
+                    message = notif_dict.get('message', '')
+                    if '|TASK_ID:' in message:
+                        parts = message.split('|TASK_ID:')
+                        notif_dict['message'] = parts[0]  # Original message without metadata
+                        notif_dict['task_id'] = parts[1] if len(parts) > 1 else None
+                    result.append(notif_dict)
+                return result
         except Exception as e:
             logger.error(f"Error fetching notifications: {e}")
             raise

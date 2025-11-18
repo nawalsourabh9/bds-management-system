@@ -11,6 +11,7 @@ export interface Notification {
   is_read: boolean;
   created_at: string;
   actionUrl?: string;
+  task_id?: string; // Task ID for task-related notifications
 }
 
 interface NotificationsContextType {
@@ -47,6 +48,10 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
           clearInterval(intervalRef.current);
         }
       };
+    } else {
+      // Clear notifications if user logs out
+      setNotifications([]);
+      setUnreadCount(0);
     }
   }, [user?.id]);
 
@@ -69,11 +74,15 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
       const formattedNotifications = (data.notifications || []).map((n: any) => ({
         ...n,
         id: String(n.id), // Ensure ID is string
-        type: n.type || 'info',
-        is_read: n.is_read || false
+        type: (n.type || 'info') as 'info' | 'success' | 'warning' | 'error',
+        is_read: n.is_read || false,
+        created_at: n.created_at || new Date().toISOString(),
+        task_id: n.task_id || undefined // Include task_id if present
       }));
       setNotifications(formattedNotifications);
-      setUnreadCount(formattedNotifications.filter((n: Notification) => !n.is_read).length);
+      const unread = formattedNotifications.filter((n: Notification) => !n.is_read).length;
+      setUnreadCount(unread);
+      console.log(`Fetched ${formattedNotifications.length} notifications, ${unread} unread`);
     } catch (error) {
       console.error('Error fetching notifications:', error);
     } finally {

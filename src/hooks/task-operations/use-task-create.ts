@@ -5,6 +5,7 @@ import { Task } from "@/types/task";
 import { toast } from "@/hooks/use-toast";
 import { useTaskDocumentUpload } from "@/hooks/use-task-document-upload";
 import { formatDateForInput } from "@/utils/dateUtils";
+import { useAuth } from "@/hooks/use-auth";
 
 interface TaskPayload {
   title: string;
@@ -28,6 +29,7 @@ interface TaskPayload {
 
 export const useTaskCreate = (setIsCreateDialogOpen: (isOpen: boolean) => void) => {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const { processTaskDocuments } = useTaskDocumentUpload();
 
   const handleCreateTask = async (newTask: Partial<Task> & { documentUploads?: any[]; [key: string]: any }) => {
@@ -86,6 +88,7 @@ export const useTaskCreate = (setIsCreateDialogOpen: (isOpen: boolean) => void) 
         is_recurring: taskPayload.is_recurring,
         is_customer_related: taskPayload.is_customer_related,
         customer_name: taskPayload.customer_name || null,
+        created_by: user?.id || null, // Include creator ID
       };
       
       // Only include recurring_frequency if task is recurring and has a valid frequency

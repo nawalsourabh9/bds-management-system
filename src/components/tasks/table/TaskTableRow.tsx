@@ -27,6 +27,8 @@ interface TaskTableRowProps {
   teamMembers: TeamMember[];
   setViewingDocument: (data: { task: Task, document: TaskDocument } | null) => void;
   allTasks?: Task[]; // Add this to check for child tasks
+  isHighlighted?: boolean;
+  rowId?: string;
 }
 
 const TaskTableRow: React.FC<TaskTableRowProps> = ({
@@ -39,7 +41,9 @@ const TaskTableRow: React.FC<TaskTableRowProps> = ({
   currentUserPermissions,
   teamMembers,
   setViewingDocument,
-  allTasks = []
+  allTasks = [],
+  isHighlighted = false,
+  rowId
 }) => {
   const [isTemplateEditOpen, setIsTemplateEditOpen] = useState(false);
   
@@ -72,7 +76,8 @@ const TaskTableRow: React.FC<TaskTableRowProps> = ({
   return (
     <>
     <TableRow 
-      className={`${getBackgroundColor()}`}
+      id={rowId}
+      className={`${getBackgroundColor()} ${isHighlighted ? 'ring-2 ring-primary ring-offset-2 bg-primary/5' : ''}`}
     >
       <TableCell className="font-medium min-w-[250px]">
         <div className="flex flex-col gap-2">
