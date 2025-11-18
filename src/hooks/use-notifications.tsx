@@ -31,11 +31,14 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const { user } = useAuth();
+  const { user, employee } = useAuth();
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Use employee.id if available, otherwise fall back to user.id
+  const userId = employee?.id || user?.id;
 
   useEffect(() => {
-    if (user?.id) {
+    if (userId) {
       fetchNotifications();
       
       // Auto-refresh notifications every 30 seconds
@@ -53,17 +56,18 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
       setNotifications([]);
       setUnreadCount(0);
     }
-  }, [user?.id]);
+  }, [userId]);
 
   const fetchNotifications = async () => {
-    if (!user?.id) {
+    if (!userId) {
+      console.warn("Cannot fetch notifications: user ID not available");
       return;
     }
     
     setIsLoading(true);
     try {
       // Fetch notifications for current user via FastAPI
-      const response = await fetch(`${API_BASE}/api/v1/notifications?user_id=${user.id}`);
+      const response = await fetch(`${API_BASE}/api/v1/notifications?user_id=${userId}`);
       
       if (!response.ok) {
         throw new Error('Failed to fetch notifications');
@@ -110,10 +114,10 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const markAllAsRead = async () => {
-    if (!user?.id) return;
+    if (!userId) return;
     
     try {
-      const response = await fetch(`${API_BASE}/api/v1/notifications/read-all?user_id=${user.id}`, {
+      const response = await fetch(`${API_BASE}/api/v1/notifications/read-all?user_id=${userId}`, {
         method: 'PUT',
       });
       
@@ -146,10 +150,10 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const clearAllNotifications = async () => {
-    if (!user?.id) return;
+    if (!userId) return;
     
     try {
-      const response = await fetch(`${API_BASE}/api/v1/notifications/clear-all?user_id=${user.id}`, {
+      const response = await fetch(`${API_BASE}/api/v1/notifications/clear-all?user_id=${userId}`, {
         method: 'DELETE',
       });
       
