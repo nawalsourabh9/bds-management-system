@@ -337,7 +337,7 @@ export function EmployeeForm({
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
+                  <SelectItem value="none">None (Top Executive)</SelectItem>
                   {manageableUsers.map((user) => (
                     <SelectItem key={user.id} value={user.id}>
                       {user.first_name} {user.last_name} ({user.role}) - {user.position_name || 'No Position'}

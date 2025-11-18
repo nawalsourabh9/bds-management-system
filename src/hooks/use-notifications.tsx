@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { API_BASE } from '@/config/api';
+import { useAuth } from '@/hooks/use-auth';
 
 export interface Notification {
   id: string;
@@ -29,24 +30,50 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const { user } = useAuth();
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    fetchNotifications();
-  }, []);
+    if (user?.id) {
+      fetchNotifications();
+      
+      // Auto-refresh notifications every 30 seconds
+      intervalRef.current = setInterval(() => {
+        fetchNotifications();
+      }, 30000);
+      
+      return () => {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+        }
+      };
+    }
+  }, [user?.id]);
 
   const fetchNotifications = async () => {
+    if (!user?.id) {
+      return;
+    }
+    
     setIsLoading(true);
     try {
-      // Fetch notifications via FastAPI
-      const response = await fetch(`${API_BASE}/api/v1/notifications`);
+      // Fetch notifications for current user via FastAPI
+      const response = await fetch(`${API_BASE}/api/v1/notifications?user_id=${user.id}`);
       
       if (!response.ok) {
         throw new Error('Failed to fetch notifications');
       }
       
       const data = await response.json();
-      setNotifications(data.notifications || []);
-      setUnreadCount((data.notifications || []).filter((n: Notification) => !n.is_read).length);
+      // Convert notification IDs to strings and ensure proper format
+      const formattedNotifications = (data.notifications || []).map((n: any) => ({
+        ...n,
+        id: String(n.id), // Ensure ID is string
+        type: n.type || 'info',
+        is_read: n.is_read || false
+      }));
+      setNotifications(formattedNotifications);
+      setUnreadCount(formattedNotifications.filter((n: Notification) => !n.is_read).length);
     } catch (error) {
       console.error('Error fetching notifications:', error);
     } finally {
@@ -74,8 +101,10 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const markAllAsRead = async () => {
+    if (!user?.id) return;
+    
     try {
-      const response = await fetch(`${API_BASE}/api/v1/notifications/read-all`, {
+      const response = await fetch(`${API_BASE}/api/v1/notifications/read-all?user_id=${user.id}`, {
         method: 'PUT',
       });
       
@@ -108,8 +137,10 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const clearAllNotifications = async () => {
+    if (!user?.id) return;
+    
     try {
-      const response = await fetch(`${API_BASE}/api/v1/notifications/clear-all`, {
+      const response = await fetch(`${API_BASE}/api/v1/notifications/clear-all?user_id=${user.id}`, {
         method: 'DELETE',
       });
       

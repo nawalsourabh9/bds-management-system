@@ -68,7 +68,9 @@ export function Header() {
               <Button variant="outline" size="icon" className="relative border-border hover:bg-accent">
                 <Bell className="h-4 w-4" />
                 {unreadCount > 0 && (
-                  <span className="absolute top-0 right-0 h-2 w-2 rounded-full bg-primary"></span>
+                  <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-primary text-white text-xs font-semibold flex items-center justify-center">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
                 )}
               </Button>
             </DropdownMenuTrigger>

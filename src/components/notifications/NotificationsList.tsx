@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Trash2 } from "lucide-react";
 
 export const NotificationsList: React.FC = () => {
-  const { notifications, markAsRead, markAllAsRead, clearNotifications } = useNotifications();
+  const { notifications, markAsRead, markAllAsRead, clearAllNotifications } = useNotifications();
 
   if (!notifications || notifications.length === 0) {
     return (
@@ -31,7 +31,7 @@ export const NotificationsList: React.FC = () => {
         <Button
           variant="ghost"
           size="sm"
-          onClick={clearNotifications}
+          onClick={clearAllNotifications}
           className="text-xs text-red-500 hover:text-red-600"
         >
           <Trash2 className="h-3 w-3 mr-1" /> 

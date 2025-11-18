@@ -63,7 +63,15 @@ def notify_admins(title: str, message: str, notification_type: str = 'info'):
 
 # Helper function to get supervisor (reports_to) for a user
 def get_user_supervisor(user_id: str):
-    """Get the supervisor (reports_to) user_id for a given user"""
+    """Get the supervisor (reports_to) user_id for a given user
+    
+    Returns None if:
+    - User has no supervisor (reports_to_id is NULL) - e.g., top executives
+    - User is not found or inactive
+    
+    Note: Top executives (CEO, C-level, etc.) should have reports_to_id = NULL in the database.
+    This function will return None for them, and they won't receive supervisor notifications.
+    """
     try:
         conn = db_service.get_connection()
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -73,6 +81,7 @@ def get_user_supervisor(user_id: str):
                 WHERE id = %s AND is_active = TRUE
             """, (user_id,))
             result = cur.fetchone()
+            # Returns None if reports_to_id is NULL (top executives) or user not found
             return str(result['reports_to_id']) if result and result.get('reports_to_id') else None
     except Exception as e:
         logger.error(f"Error fetching supervisor for user {user_id}: {e}")
@@ -2650,7 +2659,7 @@ async def mark_notification_read(notification_id: str):
             SET is_read = TRUE 
             WHERE id = %(notification_id)s
             RETURNING id;
-        """, {"notification_id": notification_id})
+        """, {"notification_id": int(notification_id)})
         
         if result and len(result) > 0:
             return {
@@ -2663,6 +2672,55 @@ async def mark_notification_read(notification_id: str):
             
     except Exception as e:
         logger.error(f"Error marking notification as read: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.put("/api/v1/notifications/read-all")
+async def mark_all_notifications_read(user_id: str = None):
+    """Mark all notifications as read for a user"""
+    try:
+        if not user_id:
+            raise HTTPException(status_code=400, detail="user_id parameter is required")
+        
+        result = db_service.execute_query("""
+            UPDATE notifications 
+            SET is_read = TRUE 
+            WHERE user_id = %(user_id)s AND is_read = FALSE
+            RETURNING id;
+        """, {"user_id": user_id})
+        
+        return {
+            "message": "All notifications marked as read",
+            "updated_count": len(result) if result else 0,
+            "timestamp": datetime.now().isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error marking all notifications as read: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.delete("/api/v1/notifications/clear-all")
+async def clear_all_notifications(user_id: str = None):
+    """Delete all notifications for a user"""
+    try:
+        if not user_id:
+            raise HTTPException(status_code=400, detail="user_id parameter is required")
+        
+        result = db_service.execute_query("""
+            DELETE FROM notifications 
+            WHERE user_id = %(user_id)s
+            RETURNING id;
+        """, {"user_id": user_id})
+        
+        return {
+            "message": "All notifications cleared",
+            "deleted_count": len(result) if result else 0,
+            "timestamp": datetime.now().isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error clearing all notifications: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.post("/api/v1/execute-sql")

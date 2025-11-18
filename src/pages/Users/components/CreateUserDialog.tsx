@@ -374,13 +374,17 @@ export const CreateUserDialog = ({ isOpen, setIsOpen, onUserCreated }: CreateUse
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Reports To</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                    <Select 
+                      onValueChange={(value) => field.onChange(value === "none" ? undefined : value)}
+                      value={field.value || "none"}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select manager" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
+                        <SelectItem value="none">None (Top Executive)</SelectItem>
                         {manageableUsers.map(user => (
                           <SelectItem key={user.id} value={user.id}>
                             {user.first_name} {user.last_name} ({user.role})
