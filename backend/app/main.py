@@ -1928,9 +1928,15 @@ async def partial_update_task(task_id: str, task_data: dict):
         try:
             # Get user_id from task_data or use 'system' as fallback
             user_id = task_data.get('updated_by') or 'system'
-            changed_fields = {k: {'old': old_task.get(k), 'new': v} 
-                            for k, v in task_db_data.items() 
-                            if str(old_task.get(k)).strip() if old_task.get(k) is not None else None != str(v).strip() if v is not None else None}
+            changed_fields = {}
+            for k, v in task_db_data.items():
+                old_val = old_task.get(k)
+                # Normalize values for comparison
+                old_val_normalized = str(old_val).strip() if old_val is not None else None
+                new_val_normalized = str(v).strip() if v is not None else None
+                # Only include if values actually changed
+                if old_val_normalized != new_val_normalized:
+                    changed_fields[k] = {'old': old_val, 'new': v}
             if changed_fields:
                 create_audit_log_entry(
                     user_id=str(user_id),
