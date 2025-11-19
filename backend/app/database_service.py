@@ -102,28 +102,45 @@ class DatabaseService:
                 
                 if has_task_id_column:
                     # Use task_id column if it exists
+                    # Primary lookup: user_id should be UUID from users.id (not employee_id)
+                    # Fallback: if employee_id is provided, find user by employee_id first
+                    logger.info(f"Fetching notifications for user_id: {user_id} (type: {type(user_id).__name__})")
+                    # First try direct UUID match (primary case - user_id is UUID)
+                    # If that fails, try matching by employee_id (fallback for display IDs)
                     cur.execute("""
                         SELECT 
                             n.id, n.title, n.message, n.type, n.is_read, n.created_at, n.task_id,
                             u.first_name, u.last_name, u.email
                         FROM notifications n
                         LEFT JOIN users u ON n.user_id = u.id
-                        WHERE n.user_id = %(user_id)s
+                        WHERE n.user_id::text = %(user_id)s::text
+                           OR EXISTS (
+                               SELECT 1 FROM users u2 
+                               WHERE u2.id = n.user_id 
+                               AND u2.employee_id = %(user_id)s
+                           )
                         ORDER BY n.created_at DESC
                         LIMIT %(limit)s;
-                    """, {"user_id": user_id, "limit": limit})
+                    """, {"user_id": str(user_id), "limit": limit})
                 else:
                     # Fallback: query without task_id column
+                    # Primary lookup: user_id should be UUID from users.id (not employee_id)
+                    logger.info(f"Fetching notifications (no task_id column) for user_id: {user_id}")
                     cur.execute("""
                         SELECT 
                             n.id, n.title, n.message, n.type, n.is_read, n.created_at,
                             u.first_name, u.last_name, u.email
                         FROM notifications n
                         LEFT JOIN users u ON n.user_id = u.id
-                        WHERE n.user_id = %(user_id)s
+                        WHERE n.user_id::text = %(user_id)s::text
+                           OR EXISTS (
+                               SELECT 1 FROM users u2 
+                               WHERE u2.id = n.user_id 
+                               AND u2.employee_id = %(user_id)s
+                           )
                         ORDER BY n.created_at DESC
                         LIMIT %(limit)s;
-                    """, {"user_id": user_id, "limit": limit})
+                    """, {"user_id": str(user_id), "limit": limit})
                 
                 notifications = cur.fetchall()
                 result = []

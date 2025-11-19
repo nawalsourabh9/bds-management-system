@@ -34,8 +34,9 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
   const { user, employee } = useAuth();
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Use employee.id if available, otherwise fall back to user.id
-  const userId = employee?.id || user?.id;
+  // Prioritize UUID (id) over employee_id (display-only like "EMP002")
+  // employee.id is the UUID from the database, employee.employee_id is just for display
+  const userId = employee?.id || user?.id; // This should be the UUID, not employee_id
 
   useEffect(() => {
     if (userId) {
@@ -60,20 +61,25 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const fetchNotifications = async () => {
     if (!userId) {
-      console.warn("Cannot fetch notifications: user ID not available");
+      console.warn("Cannot fetch notifications: user ID not available", { user, employee });
       return;
     }
     
     setIsLoading(true);
     try {
       // Fetch notifications for current user via FastAPI
+      console.log(`Fetching notifications for user_id: ${userId}`);
       const response = await fetch(`${API_BASE}/api/v1/notifications?user_id=${userId}`);
       
       if (!response.ok) {
-        throw new Error('Failed to fetch notifications');
+        const errorText = await response.text();
+        console.error(`Failed to fetch notifications: ${response.status} - ${errorText}`);
+        throw new Error(`Failed to fetch notifications: ${response.status}`);
       }
       
       const data = await response.json();
+      console.log(`Notification API response:`, data);
+      
       // Convert notification IDs to strings and ensure proper format
       const formattedNotifications = (data.notifications || []).map((n: any) => ({
         ...n,
@@ -86,9 +92,10 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
       setNotifications(formattedNotifications);
       const unread = formattedNotifications.filter((n: Notification) => !n.is_read).length;
       setUnreadCount(unread);
-      console.log(`Fetched ${formattedNotifications.length} notifications, ${unread} unread`);
+      console.log(`✅ Fetched ${formattedNotifications.length} notifications, ${unread} unread for user ${userId}`);
     } catch (error) {
-      console.error('Error fetching notifications:', error);
+      console.error('❌ Error fetching notifications:', error);
+      // Don't clear notifications on error, keep existing ones
     } finally {
       setIsLoading(false);
     }
