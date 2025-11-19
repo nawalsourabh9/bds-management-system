@@ -1903,7 +1903,12 @@ async def partial_update_task(task_id: str, task_data: dict):
         try:
             for field, new_value in task_db_data.items():
                 old_value = old_task.get(field)
-                if old_value != new_value:
+                # Normalize values for comparison (handle None, empty strings, and type differences)
+                old_val_normalized = str(old_value).strip() if old_value is not None else None
+                new_val_normalized = str(new_value).strip() if new_value is not None else None
+                
+                # Compare normalized values
+                if old_val_normalized != new_val_normalized:
                     field_display_names = {
                         'status': 'status',
                         'priority': 'priority',
@@ -1913,6 +1918,7 @@ async def partial_update_task(task_id: str, task_data: dict):
                         'description': 'description'
                     }
                     field_name = field_display_names.get(field, field)
+                    logger.info(f"Task {task_id} field '{field}' changed from '{old_value}' to '{new_value}'")
                     notify_task_update(
                         task_id=task_id,
                         change_type="Updated",
@@ -1921,7 +1927,7 @@ async def partial_update_task(task_id: str, task_data: dict):
                         new_value=str(new_value) if new_value else None
                     )
         except Exception as notification_error:
-            logger.error(f"Failed to send notifications for task update: {notification_error}")
+            logger.error(f"Failed to send notifications for task update: {notification_error}", exc_info=True)
             # Don't fail the operation if notification fails
         
         response = {
@@ -2012,7 +2018,12 @@ async def full_update_task(task_id: str, task_data: dict):
         try:
             for field, new_value in task_db_data.items():
                 old_value = old_task.get(field)
-                if old_value != new_value:
+                # Normalize values for comparison (handle None, empty strings, and type differences)
+                old_val_normalized = str(old_value).strip() if old_value is not None else None
+                new_val_normalized = str(new_value).strip() if new_value is not None else None
+                
+                # Compare normalized values
+                if old_val_normalized != new_val_normalized:
                     field_display_names = {
                         'status': 'status',
                         'priority': 'priority',
@@ -2022,6 +2033,7 @@ async def full_update_task(task_id: str, task_data: dict):
                         'description': 'description'
                     }
                     field_name = field_display_names.get(field, field)
+                    logger.info(f"Task {task_id} field '{field}' changed from '{old_value}' to '{new_value}'")
                     notify_task_update(
                         task_id=task_id,
                         change_type="Updated",
@@ -2030,7 +2042,7 @@ async def full_update_task(task_id: str, task_data: dict):
                         new_value=str(new_value) if new_value else None
                     )
         except Exception as notification_error:
-            logger.error(f"Failed to send notifications for task update: {notification_error}")
+            logger.error(f"Failed to send notifications for task update: {notification_error}", exc_info=True)
             # Don't fail the operation if notification fails
         
         # Check if task was marked as completed and is a child task
