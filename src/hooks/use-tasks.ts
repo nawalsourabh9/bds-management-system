@@ -78,6 +78,10 @@ export const useTasks = () => {
         console.error("useTasks: Error fetching tasks from FastAPI:", error);
         throw error;
       }
-    }
+    },
+    // Refetch tasks every 10 seconds for real-time dashboard updates
+    refetchInterval: 10000,
+    // Refetch when window regains focus
+    refetchOnWindowFocus: true,
   });
 };

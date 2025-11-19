@@ -41,10 +41,10 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
     if (userId) {
       fetchNotifications();
       
-      // Auto-refresh notifications every 30 seconds
+      // Auto-refresh notifications every 5 seconds for real-time updates
       intervalRef.current = setInterval(() => {
         fetchNotifications();
-      }, 30000);
+      }, 5000);
       
       return () => {
         if (intervalRef.current) {

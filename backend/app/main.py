@@ -90,6 +90,31 @@ def get_user_supervisor(user_id: str):
     finally:
         conn.close()
 
+# Helper function to create audit log
+def create_audit_log_entry(user_id: str, action: str, table_name: str, record_id: str, 
+                          old_values: dict = None, new_values: dict = None, request: Request = None):
+    """Create an audit log entry for tracking actions"""
+    try:
+        ip_address = None
+        user_agent = None
+        if request:
+            ip_address = request.client.host if request.client else None
+            user_agent = request.headers.get("user-agent")
+        
+        db_service.create_audit_log(
+            user_id=user_id,
+            action=action,
+            table_name=table_name,
+            record_id=record_id,
+            old_values=old_values,
+            new_values=new_values,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+    except Exception as e:
+        logger.error(f"Failed to create audit log: {e}")
+        # Don't fail the operation if audit logging fails
+
 # Helper function to notify task assignee, their supervisor, and admins about task changes
 def notify_task_update(task_id: str, change_type: str, change_details: str, old_value: str = None, new_value: str = None):
     """Notify assignee, their supervisor, and admins about task updates"""
@@ -1898,6 +1923,26 @@ async def partial_update_task(task_id: str, task_data: dict):
         success = db_service.update_task(task_id, task_db_data)
         if not success:
             raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Create audit log for task update
+        try:
+            # Get user_id from task_data or use 'system' as fallback
+            user_id = task_data.get('updated_by') or 'system'
+            changed_fields = {k: {'old': old_task.get(k), 'new': v} 
+                            for k, v in task_db_data.items() 
+                            if str(old_task.get(k)).strip() if old_task.get(k) is not None else None != str(v).strip() if v is not None else None}
+            if changed_fields:
+                create_audit_log_entry(
+                    user_id=str(user_id),
+                    action='UPDATE_TASK',
+                    table_name='tasks',
+                    record_id=str(task_id),
+                    old_values={k: v['old'] for k, v in changed_fields.items()},
+                    new_values={k: v['new'] for k, v in changed_fields.items()}
+                )
+        except Exception as audit_error:
+            logger.error(f"Failed to create audit log: {audit_error}")
+            # Don't fail the operation if audit logging fails
         
         # Send notifications for changed fields
         try:

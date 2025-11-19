@@ -37,29 +37,50 @@ class DatabaseService:
         try:
             conn = self.get_connection()
             with conn.cursor() as cur:
-                # Check if task_id column exists, if not, store in message metadata
-                # For now, we'll store task_id in the message as JSON metadata if task_id is provided
-                final_message = message
-                if task_id:
-                    # Store task_id as metadata in message (we'll parse it in frontend)
-                    # Format: message|TASK_ID:task_id
-                    final_message = f"{message}|TASK_ID:{task_id}"
-                
+                # Check if task_id column exists
                 cur.execute("""
-                    INSERT INTO notifications (user_id, title, message, type, is_read, created_at)
-                    VALUES (%(user_id)s, %(title)s, %(message)s, %(type)s, FALSE, NOW())
-                    RETURNING id;
-                """, {
-                    "user_id": user_id,
-                    "title": title,
-                    "message": final_message,
-                    "type": notification_type
-                })
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'notifications' AND column_name = 'task_id'
+                """)
+                has_task_id_column = cur.fetchone() is not None
+                
+                if has_task_id_column:
+                    # Use task_id column if it exists
+                    cur.execute("""
+                        INSERT INTO notifications (user_id, title, message, type, task_id, is_read, created_at)
+                        VALUES (%(user_id)s, %(title)s, %(message)s, %(type)s, %(task_id)s, FALSE, NOW())
+                        RETURNING id;
+                    """, {
+                        "user_id": user_id,
+                        "title": title,
+                        "message": message,
+                        "type": notification_type,
+                        "task_id": task_id
+                    })
+                else:
+                    # Fallback: store task_id in message metadata if column doesn't exist
+                    final_message = message
+                    if task_id:
+                        final_message = f"{message}|TASK_ID:{task_id}"
+                    
+                    cur.execute("""
+                        INSERT INTO notifications (user_id, title, message, type, is_read, created_at)
+                        VALUES (%(user_id)s, %(title)s, %(message)s, %(type)s, FALSE, NOW())
+                        RETURNING id;
+                    """, {
+                        "user_id": user_id,
+                        "title": title,
+                        "message": final_message,
+                        "type": notification_type
+                    })
+                
                 notification_id = cur.fetchone()[0]
                 conn.commit()
+                logger.info(f"Created notification {notification_id} for user {user_id}, task_id: {task_id}")
                 return notification_id
         except Exception as e:
-            logger.error(f"Error creating notification: {e}")
+            logger.error(f"Error creating notification: {e}", exc_info=True)
             raise
         finally:
             if conn:
@@ -71,36 +92,96 @@ class DatabaseService:
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Check if task_id column exists
                 cur.execute("""
-                    SELECT 
-                        n.id, n.title, n.message, n.type, n.is_read, n.created_at,
-                        u.first_name, u.last_name, u.email
-                    FROM notifications n
-                    LEFT JOIN users u ON n.user_id = u.id
-                    WHERE n.user_id = %(user_id)s
-                    ORDER BY n.created_at DESC
-                    LIMIT %(limit)s;
-                """, {"user_id": user_id, "limit": limit})
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'notifications' AND column_name = 'task_id'
+                """)
+                has_task_id_column = cur.fetchone() is not None
+                
+                if has_task_id_column:
+                    # Use task_id column if it exists
+                    cur.execute("""
+                        SELECT 
+                            n.id, n.title, n.message, n.type, n.is_read, n.created_at, n.task_id,
+                            u.first_name, u.last_name, u.email
+                        FROM notifications n
+                        LEFT JOIN users u ON n.user_id = u.id
+                        WHERE n.user_id = %(user_id)s
+                        ORDER BY n.created_at DESC
+                        LIMIT %(limit)s;
+                    """, {"user_id": user_id, "limit": limit})
+                else:
+                    # Fallback: query without task_id column
+                    cur.execute("""
+                        SELECT 
+                            n.id, n.title, n.message, n.type, n.is_read, n.created_at,
+                            u.first_name, u.last_name, u.email
+                        FROM notifications n
+                        LEFT JOIN users u ON n.user_id = u.id
+                        WHERE n.user_id = %(user_id)s
+                        ORDER BY n.created_at DESC
+                        LIMIT %(limit)s;
+                    """, {"user_id": user_id, "limit": limit})
+                
                 notifications = cur.fetchall()
                 result = []
                 for notification in notifications:
                     notif_dict = dict(notification)
-                    # Extract task_id from message if present
-                    message = notif_dict.get('message', '')
-                    if '|TASK_ID:' in message:
-                        parts = message.split('|TASK_ID:')
-                        notif_dict['message'] = parts[0]  # Original message without metadata
-                        notif_dict['task_id'] = parts[1] if len(parts) > 1 else None
+                    # Extract task_id from message if column doesn't exist
+                    if not has_task_id_column:
+                        message = notif_dict.get('message', '')
+                        if '|TASK_ID:' in message:
+                            parts = message.split('|TASK_ID:')
+                            notif_dict['message'] = parts[0]  # Original message without metadata
+                            notif_dict['task_id'] = parts[1] if len(parts) > 1 else None
                     result.append(notif_dict)
                 return result
         except Exception as e:
-            logger.error(f"Error fetching notifications: {e}")
+            logger.error(f"Error fetching notifications: {e}", exc_info=True)
             raise
         finally:
             if conn:
                 conn.close()
     
         conn = None
+    
+    def create_audit_log(self, user_id: str, action: str, table_name: str = None, record_id: str = None, 
+                         old_values: dict = None, new_values: dict = None, ip_address: str = None, 
+                         user_agent: str = None):
+        """Create an audit log entry"""
+        conn = None
+        try:
+            import json
+            conn = self.get_connection()
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO audit_logs (user_id, action, table_name, record_id, old_values, new_values, ip_address, user_agent, created_at)
+                    VALUES (%(user_id)s, %(action)s, %(table_name)s, %(record_id)s, 
+                            %(old_values)s::jsonb, %(new_values)s::jsonb, %(ip_address)s, %(user_agent)s, NOW())
+                    RETURNING id;
+                """, {
+                    "user_id": user_id,
+                    "action": action,
+                    "table_name": table_name,
+                    "record_id": record_id,
+                    "old_values": json.dumps(old_values) if old_values else None,
+                    "new_values": json.dumps(new_values) if new_values else None,
+                    "ip_address": ip_address,
+                    "user_agent": user_agent
+                })
+                log_id = cur.fetchone()[0]
+                conn.commit()
+                logger.info(f"Created audit log {log_id} for action {action} by user {user_id}")
+                return log_id
+        except Exception as e:
+            logger.error(f"Error creating audit log: {e}", exc_info=True)
+            # Don't raise - audit logging shouldn't break main operations
+        finally:
+            if conn:
+                conn.close()
+    
     def execute_query(self, query, params=None):
         """Execute a query and return results"""
         try:

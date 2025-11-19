@@ -1,9 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { fastapiService } from "@/services/fastapi-service";
 import { toast } from "@/hooks/use-toast";
+import { useNotifications } from "@/hooks/use-notifications";
 
 export const useTaskApproval = () => {
   const queryClient = useQueryClient();
+  const { fetchNotifications } = useNotifications();
 
   const approveTask = async (taskId: string) => {
     try {
@@ -16,6 +18,11 @@ export const useTaskApproval = () => {
       
       // Invalidate queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      
+      // Refresh notifications after a short delay
+      setTimeout(() => {
+        fetchNotifications();
+      }, 1000);
       
       toast({
         title: "Task Approved",
@@ -46,6 +53,11 @@ export const useTaskApproval = () => {
       
       // Invalidate queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      
+      // Refresh notifications after a short delay
+      setTimeout(() => {
+        fetchNotifications();
+      }, 1000);
       
       toast({
         title: "Task Rejected",

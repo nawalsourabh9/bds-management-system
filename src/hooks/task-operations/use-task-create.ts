@@ -6,6 +6,7 @@ import { toast } from "@/hooks/use-toast";
 import { useTaskDocumentUpload } from "@/hooks/use-task-document-upload";
 import { formatDateForInput } from "@/utils/dateUtils";
 import { useAuth } from "@/hooks/use-auth";
+import { useNotifications } from "@/hooks/use-notifications";
 
 interface TaskPayload {
   title: string;
@@ -31,6 +32,7 @@ export const useTaskCreate = (setIsCreateDialogOpen: (isOpen: boolean) => void) 
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { processTaskDocuments } = useTaskDocumentUpload();
+  const { fetchNotifications } = useNotifications();
 
   const handleCreateTask = async (newTask: Partial<Task> & { documentUploads?: any[]; [key: string]: any }) => {
     try {
@@ -141,6 +143,11 @@ export const useTaskCreate = (setIsCreateDialogOpen: (isOpen: boolean) => void) 
       // Invalidate queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       queryClient.invalidateQueries({ queryKey: ['grouped-tasks'] });
+      
+      // Refresh notifications after a short delay to show new notifications
+      setTimeout(() => {
+        fetchNotifications();
+      }, 1000);
 
       toast({
         title: "Task Created",

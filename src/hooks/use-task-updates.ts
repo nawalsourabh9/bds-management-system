@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { fastapiService } from '@/services/fastapi-service';
+import { useNotifications } from '@/hooks/use-notifications';
 
 export interface TaskUpdateData {
   title?: string;
@@ -18,12 +20,24 @@ export interface TaskUpdateData {
 export const useTaskUpdates = () => {
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const { fetchNotifications } = useNotifications();
+
+  const refreshData = () => {
+    // Invalidate tasks query to refresh dashboard
+    queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    // Refresh notifications after a short delay to ensure backend processed it
+    setTimeout(() => {
+      fetchNotifications();
+    }, 1000);
+  };
 
   const partialUpdate = async (taskId: string, data: TaskUpdateData) => {
     setUpdating(true);
     setError(null);
     try {
       const result = await fastapiService.partialUpdateTask(taskId, data);
+      refreshData();
       return result;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to update task';
@@ -39,6 +53,7 @@ export const useTaskUpdates = () => {
     setError(null);
     try {
       const result = await fastapiService.fullUpdateTask(taskId, data);
+      refreshData();
       return result;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to update task';
@@ -54,6 +69,7 @@ export const useTaskUpdates = () => {
     setError(null);
     try {
       const result = await fastapiService.updateTaskStatus(taskId, status);
+      refreshData();
       return result;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to update task status';
@@ -69,6 +85,7 @@ export const useTaskUpdates = () => {
     setError(null);
     try {
       const result = await fastapiService.updateTaskAssignee(taskId, assignee);
+      refreshData();
       return result;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to update task assignee';
@@ -84,6 +101,7 @@ export const useTaskUpdates = () => {
     setError(null);
     try {
       const result = await fastapiService.updateTaskPriority(taskId, priority);
+      refreshData();
       return result;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to update task priority';
@@ -99,6 +117,7 @@ export const useTaskUpdates = () => {
     setError(null);
     try {
       const result = await fastapiService.updateTaskDueDate(taskId, dueDate);
+      refreshData();
       return result;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to update task due date';

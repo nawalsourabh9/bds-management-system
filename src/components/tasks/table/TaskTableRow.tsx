@@ -332,23 +332,66 @@ const TaskTableRow: React.FC<TaskTableRowProps> = ({
           )}
         </div>
       </TableCell>
-      <TableCell className="sticky right-0 bg-background z-10 min-w-[120px] border-l-2 border-l-border">
-        <div className="flex items-center justify-end gap-1">
+      <TableCell className="sticky right-0 bg-background z-10 min-w-[140px] border-l-2 border-l-border">
+        <div className="flex items-center justify-end gap-2">
+          {/* View/Update Status Button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0 hover:bg-primary/10"
+            onClick={() => onViewTask(task)}
+            title="View/Update Status"
+          >
+            <Eye className="h-4 w-4 text-blue-600" />
+          </Button>
+          
+          {/* Edit Button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0 hover:bg-primary/10"
+            onClick={() => {
+              if (isRecurringParent) {
+                setIsTemplateEditOpen(true);
+              } else {
+                onEditTask(task);
+              }
+            }}
+            title={isRecurringParent ? "Edit Template" : "Edit Task"}
+          >
+            <Edit className="h-4 w-4 text-green-600" />
+          </Button>
+          
+          {/* Delete Button - Only show if admin or assignee */}
+          {(isAdmin || currentUserId === task.assignee) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0 hover:bg-destructive/10"
+              onClick={() => onDeleteTask(task.id)}
+              title="Delete Task"
+            >
+              <Trash2 className="h-4 w-4 text-red-600" />
+            </Button>
+          )}
+          
+          {/* More Options Dropdown (for additional actions) */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button 
                 variant="ghost" 
                 size="sm"
                 className="h-8 w-8 p-0"
+                title="More options"
               >
                 <MoreHorizontal className="h-4 w-4" />
-                <span className="sr-only">Open menu</span>
+                <span className="sr-only">More options</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => onViewTask(task)}>
                 <Eye className="h-4 w-4 mr-2" />
-                Update Status
+                View Details
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => {
                 if (isRecurringParent) {
