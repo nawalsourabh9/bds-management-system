@@ -10,6 +10,7 @@ interface TasksContentProps {
   onViewTask: (task: Task) => void;
   onEditTask: (task: Task) => void;
   onDeleteTask: (taskId: string) => Promise<boolean>;
+  onUpdateTask?: (taskId: string, updates: Partial<Task>) => Promise<void>;
   isAdmin: boolean;
   currentUserId: string | undefined;
   currentUserPermissions: any;
@@ -22,6 +23,7 @@ const TasksContent: React.FC<TasksContentProps> = ({
   onViewTask,
   onEditTask,
   onDeleteTask,
+  onUpdateTask,
   isAdmin,
   currentUserId,
   currentUserPermissions,
@@ -83,6 +85,7 @@ const TasksContent: React.FC<TasksContentProps> = ({
           onViewTask={onViewTask}
           onEditTask={onEditTask}
           onDeleteTask={onDeleteTask}
+          onUpdateTask={onUpdateTask}
           isAdmin={isAdmin}
           currentUserId={currentUserId}
           currentUserPermissions={currentUserPermissions}

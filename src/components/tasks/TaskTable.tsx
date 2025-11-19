@@ -20,6 +20,7 @@ interface TasksTableProps {
   onViewTask: (task: Task) => void;
   onEditTask?: (task: Task) => void;
   onDeleteTask?: (taskId: string) => Promise<boolean>;
+  onUpdateTask?: (taskId: string, updates: Partial<Task>) => Promise<void>;
   isAdmin?: boolean;
   currentUserId?: string;
   currentUserPermissions?: any; // Simplified - accept any permissions
@@ -39,6 +40,7 @@ const TasksTable: React.FC<TasksTableProps> = ({
   onViewTask,
   onEditTask,
   onDeleteTask,
+  onUpdateTask,
   isAdmin = true, // Default to admin for all users
   currentUserId = "1", 
   currentUserPermissions,
@@ -184,6 +186,7 @@ const TasksTable: React.FC<TasksTableProps> = ({
                         task={task}
                         onViewTask={onViewTask}
                         onEditTask={onEditTask || (() => {})}
+                        onUpdateTask={onUpdateTask}
                         isHighlighted={highlightedTaskId === task.id}
                         rowId={`task-${task.id}`}
                         onDeleteTask={(taskId) => {

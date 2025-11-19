@@ -2,8 +2,9 @@
 import React, { useState } from "react";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Eye, Edit, Trash2 } from "lucide-react";
+import { MoreHorizontal, Eye, Edit, Trash2, Clock, CheckCircle, AlertCircle, HelpCircle, Pause, XCircle, Shield, AlertTriangle } from "lucide-react";
 import { Task, TeamMember } from "@/types/task";
 import { TaskDocument } from "@/types/document";
 import { formatDate } from "@/utils/dateUtils";
@@ -15,11 +16,13 @@ import { TaskDocumentBadges } from "./TaskDocumentBadges";
 import TaskRecurringBadge from "./TaskRecurringBadge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { TemplateTaskEditDialog } from "../TemplateTaskEditDialog";
+import { toast } from "sonner";
 
 interface TaskTableRowProps {
   task: Task;
   onViewTask: (task: Task) => void;
   onEditTask: (task: Task) => void;
+  onUpdateTask?: (taskId: string, updates: Partial<Task>) => Promise<void>;
   onDeleteTask: (taskId: string) => void;
   isAdmin: boolean;
   currentUserId: string | undefined;
@@ -31,10 +34,33 @@ interface TaskTableRowProps {
   rowId?: string;
 }
 
+const statusOptions = [
+  { value: 'not-started', label: 'Not Started', icon: HelpCircle },
+  { value: 'pending', label: 'Pending', icon: HelpCircle },
+  { value: 'in-progress', label: 'In Progress', icon: Clock },
+  { value: 'under-review', label: 'Under Review', icon: Eye },
+  { value: 'on-hold', label: 'On Hold', icon: Pause },
+  { value: 'waiting-for-approval', label: 'Waiting for Approval', icon: AlertTriangle },
+  { value: 'blocked', label: 'Blocked', icon: Shield },
+  { value: 'overdue', label: 'Overdue', icon: AlertCircle },
+  { value: 'completed', label: 'Completed', icon: CheckCircle },
+  { value: 'cancelled', label: 'Cancelled', icon: XCircle },
+];
+
+const priorityOptions = [
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+  { value: 'urgent', label: 'Urgent' },
+  { value: 'critical', label: 'Critical' },
+  { value: 'emergency', label: 'Emergency' },
+];
+
 const TaskTableRow: React.FC<TaskTableRowProps> = ({
   task,
   onViewTask,
   onEditTask,
+  onUpdateTask,
   onDeleteTask,
   isAdmin,
   currentUserId,
@@ -46,6 +72,36 @@ const TaskTableRow: React.FC<TaskTableRowProps> = ({
   rowId
 }) => {
   const [isTemplateEditOpen, setIsTemplateEditOpen] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [isUpdatingPriority, setIsUpdatingPriority] = useState(false);
+
+  const handleStatusChange = async (newStatus: string) => {
+    if (newStatus === task.status || !onUpdateTask) return;
+    
+    setIsUpdatingStatus(true);
+    try {
+      await onUpdateTask(task.id, { status: newStatus as Task['status'] });
+    } catch (error) {
+      console.error("Error updating status:", error);
+      toast.error("Failed to update task status");
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
+  const handlePriorityChange = async (newPriority: string) => {
+    if (newPriority === task.priority || !onUpdateTask) return;
+    
+    setIsUpdatingPriority(true);
+    try {
+      await onUpdateTask(task.id, { priority: newPriority as Task['priority'] });
+    } catch (error) {
+      console.error("Error updating priority:", error);
+      toast.error("Failed to update task priority");
+    } finally {
+      setIsUpdatingPriority(false);
+    }
+  };
   
   const formatDateForDisplay = (dateString: string | undefined) => {
     if (!dateString) return "";
@@ -202,7 +258,7 @@ const TaskTableRow: React.FC<TaskTableRowProps> = ({
           )}
         </div>
       </TableCell>
-      <TableCell className="min-w-[80px]">
+      <TableCell className="min-w-[120px]">
         <div>
           {isRecurringParent ? (
             <div className="flex flex-col gap-1">
@@ -210,11 +266,27 @@ const TaskTableRow: React.FC<TaskTableRowProps> = ({
               <span className="text-xs text-muted-foreground">Priority set per instance</span>
             </div>
           ) : (
-            <TaskPriorityBadge priority={task.priority} />
+            <Select 
+              value={task.priority} 
+              onValueChange={handlePriorityChange}
+              disabled={isUpdatingPriority}
+            >
+              <SelectTrigger className="h-auto w-auto border-0 p-1 bg-transparent hover:bg-muted/50 shadow-none data-[state=open]:bg-muted [&>span]:hidden">
+                <SelectValue />
+                <TaskPriorityBadge priority={task.priority} />
+              </SelectTrigger>
+              <SelectContent>
+                {priorityOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
         </div>
       </TableCell>
-      <TableCell className="min-w-[120px]">
+      <TableCell className="min-w-[150px]">
         <div>
           {isRecurringParent ? (
             <div className="flex flex-col gap-1">
@@ -222,7 +294,26 @@ const TaskTableRow: React.FC<TaskTableRowProps> = ({
               <span className="text-xs text-muted-foreground">Status set per instance</span>
             </div>
           ) : (
-            <TaskStatusBadge status={task.status} comments={task.comments} />
+            <Select 
+              value={task.status} 
+              onValueChange={handleStatusChange}
+              disabled={isUpdatingStatus}
+            >
+              <SelectTrigger className="h-auto w-auto border-0 p-1 bg-transparent hover:bg-muted/50 shadow-none data-[state=open]:bg-muted [&>span]:hidden">
+                <SelectValue />
+                <TaskStatusBadge status={task.status} comments={task.comments} />
+              </SelectTrigger>
+              <SelectContent>
+                {statusOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    <div className="flex items-center gap-2">
+                      {React.createElement(option.icon, { className: "h-4 w-4" })}
+                      {option.label}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
         </div>
       </TableCell>

@@ -127,6 +127,9 @@ const Tasks = () => {
         onViewTask={handleStatusUpdate}
         onEditTask={handleEditTask}
         onDeleteTask={deleteTask}
+        onUpdateTask={async (taskId, updates) => {
+          await handleUpdateTask(taskId, updates);
+        }}
         isAdmin={true} // Give admin capabilities to everyone
         currentUserId={employee?.id}
         currentUserPermissions={currentUserPermissions}
