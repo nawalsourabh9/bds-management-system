@@ -42,7 +42,7 @@ def get_admin_users_for_notification():
             conn.close()
 
 # Helper function to notify admins/managers/superadmins
-def notify_admins(title: str, message: str, notification_type: str = 'info'):
+def notify_admins(title: str, message: str, notification_type: str = 'info', task_id: str = None):
     """Send notification to all admins, managers, and superadmins"""
     try:
         admin_users = get_admin_users_for_notification()
@@ -52,7 +52,8 @@ def notify_admins(title: str, message: str, notification_type: str = 'info'):
                     user_id=str(admin_user['id']),
                     title=title,
                     message=message,
-                    notification_type=notification_type
+                    notification_type=notification_type,
+                    task_id=task_id
                 )
             except Exception as e:
                 logger.error(f"Failed to create notification for admin {admin_user['id']}: {e}")
@@ -119,38 +120,48 @@ def notify_task_update(task_id: str, change_type: str, change_details: str, old_
                 )
                 
                 # Also notify assignee's supervisor (reports_to)
-                supervisor_id = get_user_supervisor(str(assignee_id))
-                if supervisor_id:
-                    try:
-                        # Get assignee name for supervisor notification
-                        assignee_info = db_service.execute_query("""
-                            SELECT CONCAT(first_name, ' ', last_name) as name
-                            FROM users WHERE id = %s
-                        """, (assignee_id,))
-                        assignee_name = assignee_info[0]['name'] if assignee_info and len(assignee_info) > 0 else 'Your team member'
-                        
-                        supervisor_message = f"Task '{task_title}' assigned to {assignee_name} {change_details}."
-                        if old_value and new_value:
-                            supervisor_message = f"Task '{task_title}' assigned to {assignee_name} {change_details}: Changed from '{old_value}' to '{new_value}'."
-                        
-                        db_service.create_notification(
-                            user_id=supervisor_id,
-                            title=f"Team Member Task {change_type}",
-                            message=supervisor_message,
-                            notification_type='info',
-                            task_id=task_id
-                        )
-                    except Exception as e:
-                        logger.error(f"Failed to notify supervisor {supervisor_id}: {e}")
+                try:
+                    supervisor_id = get_user_supervisor(str(assignee_id))
+                    if supervisor_id:
+                        try:
+                            # Get assignee name for supervisor notification
+                            assignee_info = db_service.execute_query("""
+                                SELECT CONCAT(first_name, ' ', last_name) as name
+                                FROM users WHERE id = %s
+                            """, (assignee_id,))
+                            assignee_name = 'Your team member'
+                            if assignee_info and isinstance(assignee_info, list) and len(assignee_info) > 0:
+                                assignee_name = assignee_info[0].get('name', 'Your team member')
+                            
+                            supervisor_message = f"Task '{task_title}' assigned to {assignee_name} {change_details}."
+                            if old_value and new_value:
+                                supervisor_message = f"Task '{task_title}' assigned to {assignee_name} {change_details}: Changed from '{old_value}' to '{new_value}'."
+                            
+                            db_service.create_notification(
+                                user_id=supervisor_id,
+                                title=f"Team Member Task {change_type}",
+                                message=supervisor_message,
+                                notification_type='info',
+                                task_id=task_id
+                            )
+                        except Exception as e:
+                            logger.error(f"Failed to notify supervisor {supervisor_id}: {e}")
+                except Exception as e:
+                    logger.error(f"Failed to get supervisor for assignee {assignee_id}: {e}")
             except Exception as e:
                 logger.error(f"Failed to notify assignee {assignee_id}: {e}")
         
         # Notify admins
-        notify_admins(
-            title=f"Task {change_type}",
-            message=message,
-            notification_type='info'
-        )
+        try:
+            notify_admins(
+                title=f"Task {change_type}",
+                message=message,
+                notification_type='info',
+                task_id=task_id
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify admins: {e}")
+            # Don't fail the main operation if notification fails
     except Exception as e:
         logger.error(f"Error notifying task update: {e}")
         # Don't fail the main operation if notification fails
@@ -1808,27 +1819,36 @@ async def partial_update_task(task_id: str, task_data: dict):
         # Convert frontend field names to database field names
         task_db_data = {}
         
-        # Map frontend fields to database fields
+        # Map frontend fields to database fields (handle both camelCase and snake_case)
         field_mapping = {
             'title': 'title',
             'description': 'description',
-            'assignee': 'assignee_id',      # Frontend sends assignee ID (UUID)
+            'assignee': 'assignee_id',      # Frontend sends assignee ID (UUID) - camelCase
+            'assignee_id': 'assignee_id',   # Also handle snake_case from fastapi-service
             'priority': 'priority',
             'status': 'status',
-            'dueDate': 'due_date',          # Frontend sends dueDate
-            'startDate': 'start_date',      # Frontend sends startDate
-            'endDate': 'end_date',          # Frontend sends endDate
-            'isRecurring': 'is_recurring',  # Frontend sends isRecurring
+            'dueDate': 'due_date',          # Frontend sends dueDate (camelCase)
+            'due_date': 'due_date',         # Also handle snake_case from fastapi-service
+            'startDate': 'start_date',      # Frontend sends startDate (camelCase)
+            'start_date': 'start_date',     # Also handle snake_case
+            'endDate': 'end_date',          # Frontend sends endDate (camelCase)
+            'end_date': 'end_date',         # Also handle snake_case
+            'isRecurring': 'is_recurring',  # Frontend sends isRecurring (camelCase)
+            'is_recurring': 'is_recurring', # Also handle snake_case
             'recurringFrequency': 'recurring_frequency',  # Frontend sends recurringFrequency
+            'recurring_frequency': 'recurring_frequency', # Also handle snake_case
             'isCustomerRelated': 'is_customer_related',  # Frontend sends isCustomerRelated
+            'is_customer_related': 'is_customer_related', # Also handle snake_case
             'customerName': 'customer_name',  # Frontend sends customerName
-            'attachmentsRequired': 'attachments_required'  # Frontend sends attachmentsRequired
+            'customer_name': 'customer_name', # Also handle snake_case
+            'attachmentsRequired': 'attachments_required',  # Frontend sends attachmentsRequired
+            'attachments_required': 'attachments_required'  # Also handle snake_case
         }
         
         for frontend_field, db_field in field_mapping.items():
             if frontend_field in task_data and task_data[frontend_field] is not None:
                 # Special handling for attachments_required to convert string to boolean
-                if frontend_field == 'attachmentsRequired':
+                if frontend_field in ['attachmentsRequired', 'attachments_required']:
                     task_db_data[db_field] = parse_attachments_required(task_data[frontend_field])
                 else:
                     task_db_data[db_field] = task_data[frontend_field]
@@ -1884,11 +1904,16 @@ async def partial_update_task(task_id: str, task_data: dict):
             "timestamp": datetime.now().isoformat()
         }
     except ValueError as e:
-        logger.error(f"Validation error updating task: {e}")
+        logger.error(f"Validation error updating task {task_id}: {e}", exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
-        logger.error(f"Error updating task: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        logger.error(f"Error updating task {task_id}: {e}", exc_info=True)
+        logger.error(f"Task data received: {task_data}")
+        logger.error(f"Task DB data: {task_db_data if 'task_db_data' in locals() else 'N/A'}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.put("/api/v1/tasks/{task_id}")
 async def full_update_task(task_id: str, task_data: dict):
@@ -1897,27 +1922,36 @@ async def full_update_task(task_id: str, task_data: dict):
         # Convert frontend field names to database field names
         task_db_data = {}
         
-        # Map frontend fields to database fields
+        # Map frontend fields to database fields (handle both camelCase and snake_case)
         field_mapping = {
             'title': 'title',
             'description': 'description',
-            'assignee': 'assignee_id',      # Frontend sends assignee ID (UUID)
+            'assignee': 'assignee_id',      # Frontend sends assignee ID (UUID) - camelCase
+            'assignee_id': 'assignee_id',   # Also handle snake_case from fastapi-service
             'priority': 'priority',
             'status': 'status',
-            'dueDate': 'due_date',          # Frontend sends dueDate
-            'startDate': 'start_date',      # Frontend sends startDate
-            'endDate': 'end_date',          # Frontend sends endDate
-            'isRecurring': 'is_recurring',  # Frontend sends isRecurring
+            'dueDate': 'due_date',          # Frontend sends dueDate (camelCase)
+            'due_date': 'due_date',         # Also handle snake_case from fastapi-service
+            'startDate': 'start_date',      # Frontend sends startDate (camelCase)
+            'start_date': 'start_date',     # Also handle snake_case
+            'endDate': 'end_date',          # Frontend sends endDate (camelCase)
+            'end_date': 'end_date',         # Also handle snake_case
+            'isRecurring': 'is_recurring',  # Frontend sends isRecurring (camelCase)
+            'is_recurring': 'is_recurring', # Also handle snake_case
             'recurringFrequency': 'recurring_frequency',  # Frontend sends recurringFrequency
+            'recurring_frequency': 'recurring_frequency', # Also handle snake_case
             'isCustomerRelated': 'is_customer_related',  # Frontend sends isCustomerRelated
+            'is_customer_related': 'is_customer_related', # Also handle snake_case
             'customerName': 'customer_name',  # Frontend sends customerName
-            'attachmentsRequired': 'attachments_required'  # Frontend sends attachmentsRequired
+            'customer_name': 'customer_name', # Also handle snake_case
+            'attachmentsRequired': 'attachments_required',  # Frontend sends attachmentsRequired
+            'attachments_required': 'attachments_required'  # Also handle snake_case
         }
         
         for frontend_field, db_field in field_mapping.items():
             if frontend_field in task_data and task_data[frontend_field] is not None:
                 # Special handling for attachments_required to convert string to boolean
-                if frontend_field == 'attachmentsRequired':
+                if frontend_field in ['attachmentsRequired', 'attachments_required']:
                     task_db_data[db_field] = parse_attachments_required(task_data[frontend_field])
                 else:
                     task_db_data[db_field] = task_data[frontend_field]
@@ -2038,11 +2072,16 @@ async def full_update_task(task_id: str, task_data: dict):
             "timestamp": datetime.now().isoformat()
         }
     except ValueError as e:
-        logger.error(f"Validation error updating task: {e}")
+        logger.error(f"Validation error updating task {task_id}: {e}", exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
-        logger.error(f"Error updating task: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        logger.error(f"Error updating task {task_id}: {e}", exc_info=True)
+        logger.error(f"Task data received: {task_data}")
+        logger.error(f"Task DB data: {task_db_data if 'task_db_data' in locals() else 'N/A'}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.patch("/api/v1/tasks/{task_id}/status")
 async def update_task_status(task_id: str, status_data: dict):

@@ -290,7 +290,7 @@ BEGIN
         -- Log status changes
         IF OLD.status != NEW.status THEN
             INSERT INTO task_history (task_id, user_id, action, field_name, old_value, new_value)
-            VALUES (NEW.id, NEW.updated_at, 'status_changed', 'status', OLD.status, NEW.status);
+            VALUES (NEW.id, COALESCE(NEW.created_by, NEW.assignee_id), 'status_changed', 'status', OLD.status, NEW.status);
             
             -- Send notifications for status changes
             -- Notification to assignee
@@ -321,13 +321,13 @@ BEGIN
         -- Log priority changes
         IF OLD.priority != NEW.priority THEN
             INSERT INTO task_history (task_id, user_id, action, field_name, old_value, new_value)
-            VALUES (NEW.id, NEW.updated_at, 'priority_changed', 'priority', OLD.priority, NEW.priority);
+            VALUES (NEW.id, COALESCE(NEW.created_by, NEW.assignee_id), 'priority_changed', 'priority', OLD.priority, NEW.priority);
         END IF;
         
         -- Log assignment changes
         IF OLD.assignee_id != NEW.assignee_id THEN
             INSERT INTO task_history (task_id, user_id, action, field_name, old_value, new_value)
-            VALUES (NEW.id, NEW.updated_at, 'assignee_changed', 'assignee_id', OLD.assignee_id::text, NEW.assignee_id::text);
+            VALUES (NEW.id, COALESCE(NEW.created_by, NEW.assignee_id), 'assignee_changed', 'assignee_id', OLD.assignee_id::text, NEW.assignee_id::text);
             
             -- Notification to new assignee
             IF NEW.assignee_id IS NOT NULL THEN
