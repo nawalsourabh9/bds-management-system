@@ -154,7 +154,7 @@ const TaskTableRow: React.FC<TaskTableRowProps> = ({
           <span className="text-sm">{task.department}</span>
         </div>
       </TableCell>
-      <TableCell className="min-w-[120px]">
+      <TableCell className="min-w-[120px] hidden lg:table-cell">
         <div>
           {isRecurringParent ? (
             <div className="flex flex-col gap-1">
@@ -226,7 +226,7 @@ const TaskTableRow: React.FC<TaskTableRowProps> = ({
           )}
         </div>
       </TableCell>
-      <TableCell className="min-w-[200px]">
+      <TableCell className="min-w-[150px] hidden md:table-cell">
         <div>
           {isRecurringParent ? (
             <div className="flex flex-col gap-1">
@@ -241,43 +241,45 @@ const TaskTableRow: React.FC<TaskTableRowProps> = ({
           )}
         </div>
       </TableCell>
-      <TableCell className="min-w-[200px]">
-        <div className="flex items-center gap-1">
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={() => onViewTask(task)}
-            className="h-8 px-3"
-          >
-            <Eye className="h-3 w-3 mr-1" />
-            Update
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={() => {
-              if (isRecurringParent) {
-                setIsTemplateEditOpen(true);
-              } else {
-                onEditTask(task);
-              }
-            }}
-            className="h-8 px-3"
-          >
-            <Edit className="h-3 w-3 mr-1" />
-            {isRecurringParent ? "Edit Template" : "Edit"}
-          </Button>
-          {(isAdmin || currentUserId === task.assignee) && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onDeleteTask(task.id)}
-              className="h-8 px-3 text-destructive hover:text-destructive"
-            >
-              <Trash2 className="h-3 w-3 mr-1" />
-              Delete
-            </Button>
-          )}
+      <TableCell className="sticky right-0 bg-background z-10 min-w-[120px] border-l-2 border-l-border">
+        <div className="flex items-center justify-end gap-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                className="h-8 w-8 p-0"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+                <span className="sr-only">Open menu</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => onViewTask(task)}>
+                <Eye className="h-4 w-4 mr-2" />
+                Update Status
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => {
+                if (isRecurringParent) {
+                  setIsTemplateEditOpen(true);
+                } else {
+                  onEditTask(task);
+                }
+              }}>
+                <Edit className="h-4 w-4 mr-2" />
+                {isRecurringParent ? "Edit Template" : "Edit Task"}
+              </DropdownMenuItem>
+              {(isAdmin || currentUserId === task.assignee) && (
+                <DropdownMenuItem 
+                  onClick={() => onDeleteTask(task.id)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </TableCell>
     </TableRow>

@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-Fix the task_history trigger function to use correct user_id instead of updated_at timestamp
+Fix task_history trigger function for MySQL - use UUID() function
 """
 
 import os
 import sys
-import psycopg2
-from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+import pymysql
 import subprocess
 import logging
 
@@ -57,112 +56,122 @@ def get_database_config():
     return config
 
 def get_db_connection(config):
-    """Get database connection"""
+    """Get MySQL database connection"""
     try:
-        conn = psycopg2.connect(
+        conn = pymysql.connect(
             host=config['host'],
             database=config['database'],
             user=config['user'],
             password=config['password'],
-            port=5432,
-            sslmode='require'
+            port=3306,
+            charset='utf8mb4',
+            cursorclass=pymysql.cursors.DictCursor
         )
-        conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
-        logger.info("✓ Connected to database")
+        logger.info("✓ Connected to MySQL database")
         return conn
     except Exception as e:
         logger.error(f"✗ Failed to connect to database: {e}")
         return None
 
 def apply_fix(conn):
-    """Apply the trigger function fix"""
+    """Apply the trigger function fix for MySQL"""
     fix_sql = """
+DELIMITER $$
+
 CREATE OR REPLACE FUNCTION log_task_changes_with_notifications()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
 BEGIN
     IF TG_OP = 'UPDATE' THEN
         -- Log status changes
         IF OLD.status != NEW.status THEN
             INSERT INTO task_history (id, task_id, user_id, action, field_name, old_value, new_value)
-            VALUES (gen_random_uuid(), NEW.id, COALESCE(NEW.created_by, NEW.assignee_id), 'status_changed', 'status', OLD.status, NEW.status);
+            VALUES (UUID(), NEW.id, COALESCE(NEW.created_by, NEW.assignee_id), 'status_changed', 'status', OLD.status, NEW.status);
             
             -- Send notifications for status changes
             -- Notification to assignee
             IF NEW.assignee_id IS NOT NULL THEN
-                INSERT INTO notifications (id, user_id, title, message, type, created_at)
+                INSERT INTO notifications (user_id, title, message, type, created_at)
                 VALUES (
-                    gen_random_uuid(),
                     NEW.assignee_id,
                     'Task Status Updated',
-                    'Task "' || NEW.title || '" status changed from ' || OLD.status || ' to ' || NEW.status || '.',
+                    CONCAT('Task "', NEW.title, '" status changed from ', OLD.status, ' to ', NEW.status, '.'),
                     'info',
-                    CURRENT_TIMESTAMP
+                    NOW()
                 );
             END IF;
             
             -- Notification to creator (if different from assignee)
             IF NEW.created_by IS NOT NULL AND NEW.created_by != NEW.assignee_id THEN
-                INSERT INTO notifications (id, user_id, title, message, type, created_at)
+                INSERT INTO notifications (user_id, title, message, type, created_at)
                 VALUES (
-                    gen_random_uuid(),
                     NEW.created_by,
                     'Task Status Updated',
-                    'Task "' || NEW.title || '" status changed from ' || OLD.status || ' to ' || NEW.status || '.',
+                    CONCAT('Task "', NEW.title, '" status changed from ', OLD.status, ' to ', NEW.status, '.'),
                     'info',
-                    CURRENT_TIMESTAMP
+                    NOW()
                 );
             END IF;
             
             -- If child task is completed, generate next instance
             IF NEW.status = 'completed' AND NEW.is_parent_task = FALSE AND NEW.parent_task_id IS NOT NULL THEN
-                PERFORM generate_next_child_task(NEW.id);
+                CALL generate_next_child_task(NEW.id);
             END IF;
         END IF;
         
         -- Log priority changes
         IF OLD.priority != NEW.priority THEN
             INSERT INTO task_history (id, task_id, user_id, action, field_name, old_value, new_value)
-            VALUES (gen_random_uuid(), NEW.id, COALESCE(NEW.created_by, NEW.assignee_id), 'priority_changed', 'priority', OLD.priority, NEW.priority);
+            VALUES (UUID(), NEW.id, COALESCE(NEW.created_by, NEW.assignee_id), 'priority_changed', 'priority', OLD.priority, NEW.priority);
         END IF;
         
         -- Log assignment changes
         IF OLD.assignee_id != NEW.assignee_id THEN
             INSERT INTO task_history (id, task_id, user_id, action, field_name, old_value, new_value)
-            VALUES (gen_random_uuid(), NEW.id, COALESCE(NEW.created_by, NEW.assignee_id), 'assignee_changed', 'assignee_id', OLD.assignee_id::text, NEW.assignee_id::text);
+            VALUES (UUID(), NEW.id, COALESCE(NEW.created_by, NEW.assignee_id), 'assignee_changed', 'assignee_id', CAST(OLD.assignee_id AS CHAR), CAST(NEW.assignee_id AS CHAR));
             
             -- Notification to new assignee
             IF NEW.assignee_id IS NOT NULL THEN
-                INSERT INTO notifications (id, user_id, title, message, type, created_at)
+                INSERT INTO notifications (user_id, title, message, type, created_at)
                 VALUES (
-                    gen_random_uuid(),
                     NEW.assignee_id,
                     'Task Assigned to You',
-                    'Task "' || NEW.title || '" has been assigned to you.',
+                    CONCAT('Task "', NEW.title, '" has been assigned to you.'),
                     'info',
-                    CURRENT_TIMESTAMP
+                    NOW()
                 );
             END IF;
         END IF;
     END IF;
     
     RETURN NEW;
-END;
-$$ language 'plpgsql';
+END$$
+
+DELIMITER ;
 """
     
     try:
         cursor = conn.cursor()
-        cursor.execute(fix_sql)
+        # MySQL doesn't support CREATE OR REPLACE for triggers, so we drop first
+        cursor.execute("DROP TRIGGER IF EXISTS task_history_trigger;")
+        
+        # Execute the function creation
+        for statement in fix_sql.split(';'):
+            statement = statement.strip()
+            if statement and not statement.startswith('--'):
+                cursor.execute(statement)
+        
+        conn.commit()
         cursor.close()
-        logger.info("✓ Trigger function fixed successfully")
+        logger.info("✓ Trigger function fixed successfully (using MySQL UUID())")
         return True
     except Exception as e:
         logger.error(f"✗ Error applying fix: {e}")
+        conn.rollback()
         return False
 
 def main():
     """Main function"""
-    logger.info("🚀 Fixing task_history trigger function...")
+    logger.info("🚀 Fixing UUID generation in task_history trigger function for MySQL...")
     
     # Get database configuration
     config = get_database_config()

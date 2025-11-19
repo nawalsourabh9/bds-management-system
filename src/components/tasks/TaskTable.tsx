@@ -132,25 +132,25 @@ const TasksTable: React.FC<TasksTableProps> = ({
     <>
       <Card>
         <CardContent className="p-0">
-          <div className="rounded-md border">
+          <div className="rounded-md border overflow-x-auto">
             <Table className="w-full">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="border-r">Task</TableHead>
-                  <TableHead className="border-r">Assignee</TableHead>
-                  <TableHead className="border-r">Department</TableHead>
-                  <TableHead className="border-r">Reports To</TableHead>
-                  <TableHead className="border-r">Due Date</TableHead>
-                  <TableHead className="border-r">Priority</TableHead>
-                  <TableHead className="border-r">Status</TableHead>
-                  <TableHead className="border-r">Documents</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead className="border-r min-w-[200px]">Task</TableHead>
+                  <TableHead className="border-r min-w-[120px]">Assignee</TableHead>
+                  <TableHead className="border-r min-w-[100px]">Department</TableHead>
+                  <TableHead className="border-r min-w-[120px] hidden lg:table-cell">Reports To</TableHead>
+                  <TableHead className="border-r min-w-[100px]">Due Date</TableHead>
+                  <TableHead className="border-r min-w-[80px]">Priority</TableHead>
+                  <TableHead className="border-r min-w-[120px]">Status</TableHead>
+                  <TableHead className="border-r min-w-[150px] hidden md:table-cell">Documents</TableHead>
+                  <TableHead className="sticky right-0 bg-background z-10 min-w-[120px] border-l-2 border-l-border">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {tasks.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground">
+                    <TableCell colSpan={9} className="text-center text-muted-foreground">
                       No tasks found
                     </TableCell>
                   </TableRow>

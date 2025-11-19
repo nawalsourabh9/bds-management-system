@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse
 import uvicorn
 from app.core.config import settings
 from app.database_service import db_service
-from datetime import datetime
+from datetime import datetime, date
 from pydantic import BaseModel
 import os
 import logging
@@ -1869,6 +1869,32 @@ async def partial_update_task(task_id: str, task_data: dict):
         if not old_task:
             raise HTTPException(status_code=404, detail="Task not found")
         
+        # Check if completing task before due date
+        # Note: For recurring tasks (especially daily), completing early is allowed.
+        # The next instance will be calculated from the task's due_date, not completion date.
+        warning_message = None
+        if task_db_data.get('status') == 'completed' and old_task.get('due_date'):
+            try:
+                due_date = old_task['due_date']
+                if isinstance(due_date, str):
+                    due_date = datetime.fromisoformat(due_date.replace('Z', '+00:00'))
+                elif isinstance(due_date, date) and not isinstance(due_date, datetime):
+                    due_date = datetime.combine(due_date, datetime.min.time())
+                
+                current_date = datetime.now().date()
+                due_date_only = due_date.date() if isinstance(due_date, datetime) else due_date
+                
+                if current_date < due_date_only:
+                    days_early = (due_date_only - current_date).days
+                    # For daily recurring tasks, this is normal and expected
+                    is_recurring = old_task.get('is_recurring') or old_task.get('parent_task_id')
+                    if is_recurring and days_early == 1:
+                        warning_message = f"Task completed early. Next instance will be due on {due_date_only.strftime('%B %d, %Y')}."
+                    else:
+                        warning_message = f"Task is being completed {days_early} day(s) before its due date ({due_date_only.strftime('%B %d, %Y')})."
+            except Exception as e:
+                logger.warning(f"Could not check due date for early completion warning: {e}")
+        
         success = db_service.update_task(task_id, task_db_data)
         if not success:
             raise HTTPException(status_code=404, detail="Task not found")
@@ -1898,11 +1924,17 @@ async def partial_update_task(task_id: str, task_data: dict):
             logger.error(f"Failed to send notifications for task update: {notification_error}")
             # Don't fail the operation if notification fails
         
-        return {
+        response = {
             "message": "Task partially updated successfully",
             "updated_fields": list(task_db_data.keys()),
             "timestamp": datetime.now().isoformat()
         }
+        
+        # Add warning if completing early
+        if warning_message:
+            response["warning"] = warning_message
+        
+        return response
     except ValueError as e:
         logger.error(f"Validation error updating task {task_id}: {e}", exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
@@ -2098,6 +2130,32 @@ async def update_task_status(task_id: str, status_data: dict):
             raise HTTPException(status_code=404, detail="Task not found")
         old_status = old_task.get('status')
         
+        # Check if completing task before due date
+        # Note: For recurring tasks (especially daily), completing early is allowed.
+        # The next instance will be calculated from the task's due_date, not completion date.
+        warning_message = None
+        if status_data['status'] == 'completed' and old_task.get('due_date'):
+            try:
+                due_date = old_task['due_date']
+                if isinstance(due_date, str):
+                    due_date = datetime.fromisoformat(due_date.replace('Z', '+00:00'))
+                elif isinstance(due_date, date) and not isinstance(due_date, datetime):
+                    due_date = datetime.combine(due_date, datetime.min.time())
+                
+                current_date = datetime.now().date()
+                due_date_only = due_date.date() if isinstance(due_date, datetime) else due_date
+                
+                if current_date < due_date_only:
+                    days_early = (due_date_only - current_date).days
+                    # For daily recurring tasks, this is normal and expected
+                    is_recurring = old_task.get('is_recurring') or old_task.get('parent_task_id')
+                    if is_recurring and days_early == 1:
+                        warning_message = f"Task completed early. Next instance will be due on {due_date_only.strftime('%B %d, %Y')}."
+                    else:
+                        warning_message = f"Task is being completed {days_early} day(s) before its due date ({due_date_only.strftime('%B %d, %Y')})."
+            except Exception as e:
+                logger.warning(f"Could not check due date for early completion warning: {e}")
+        
         # Update the task status
         success = db_service.update_task(task_id, {'status': status_data['status']})
         if not success:
@@ -2159,12 +2217,18 @@ async def update_task_status(task_id: str, status_data: dict):
                             if new_child_id:
                                 logger.info(f"Generated next child task: {new_child_id[0]['child_id']}")
         
-        return {
+        response = {
             "message": "Task status updated successfully",
             "task_id": task_id,
             "new_status": status_data['status'],
             "timestamp": datetime.now().isoformat()
         }
+        
+        # Add warning if completing early
+        if warning_message:
+            response["warning"] = warning_message
+        
+        return response
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

@@ -16,10 +16,19 @@ export const useTaskUpdate = () => {
       // Invalidate queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       
-      toast({
-        title: "Task Updated",
-        description: `Task has been updated successfully.`
-      });
+      // Check for warning message (e.g., completing task before due date)
+      if (updatedTask?.warning) {
+        toast({
+          title: "Task Updated",
+          description: updatedTask.warning,
+          variant: "default"
+        });
+      } else {
+        toast({
+          title: "Task Updated",
+          description: `Task has been updated successfully.`
+        });
+      }
       
       return updatedTask;
     } catch (error: any) {

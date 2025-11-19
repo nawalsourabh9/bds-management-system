@@ -58,6 +58,9 @@ const TaskDialogs: React.FC<TaskDialogsProps> = ({
           taskId={currentStatusTask.id}
           currentStatus={currentStatusTask.status}
           currentPriority={currentStatusTask.priority}
+          dueDate={currentStatusTask.dueDate}
+          isRecurring={currentStatusTask.isRecurring}
+          parentTaskId={currentStatusTask.parentTaskId}
           onStatusUpdate={async (taskId, newStatus, newPriority, comments) => {
             // Use the correct handleUpdateTask function with taskId and updates
             await handleUpdateTask(taskId, {

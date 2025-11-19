@@ -1,18 +1,24 @@
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Clock, CheckCircle, AlertCircle, HelpCircle, Pause, XCircle, Shield, Eye, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
+import { format } from "date-fns";
 
 interface StatusUpdateDialogProps {
   taskId: string;
   currentStatus: string;
   currentPriority: string;
+  dueDate?: string;
+  isRecurring?: boolean;
+  parentTaskId?: string;
   onStatusUpdate: (taskId: string, newStatus: string, newPriority: string, comments: string) => Promise<void>;
   trigger?: React.ReactNode;
   open?: boolean;
@@ -45,6 +51,9 @@ const StatusUpdateDialog: React.FC<StatusUpdateDialogProps> = ({
   taskId,
   currentStatus,
   currentPriority,
+  dueDate,
+  isRecurring,
+  parentTaskId,
   onStatusUpdate,
   trigger,
   open: externalOpen,
@@ -57,6 +66,49 @@ const StatusUpdateDialog: React.FC<StatusUpdateDialogProps> = ({
   const [newPriority, setNewPriority] = useState(currentPriority);
   const [comments, setComments] = useState("");
   const [isUpdating, setIsUpdating] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [pendingUpdate, setPendingUpdate] = useState<{status: string, priority: string, comments: string} | null>(null);
+
+  // Check if completing task far in advance
+  const earlyCompletionWarning = useMemo(() => {
+    if (newStatus !== 'completed' || !dueDate) return null;
+    
+    try {
+      const due = new Date(dueDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      due.setHours(0, 0, 0, 0);
+      
+      const daysDiff = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (daysDiff > 0) {
+        const isRecurringTask = isRecurring || !!parentTaskId;
+        // For recurring tasks, allow up to 1 day early without confirmation
+        // For non-recurring tasks, require confirmation if more than 1 day early
+        const requiresConfirmation = isRecurringTask ? daysDiff > 1 : daysDiff > 1;
+        
+        if (requiresConfirmation) {
+          return {
+            daysEarly: daysDiff,
+            dueDateFormatted: format(due, 'MMMM dd, yyyy'),
+            requiresConfirmation: true,
+            isRecurring: isRecurringTask
+          };
+        } else if (daysDiff === 1 && isRecurringTask) {
+          return {
+            daysEarly: 1,
+            dueDateFormatted: format(due, 'MMMM dd, yyyy'),
+            requiresConfirmation: false,
+            isRecurring: true
+          };
+        }
+      }
+    } catch (e) {
+      console.error("Error calculating early completion:", e);
+    }
+    
+    return null;
+  }, [newStatus, dueDate, isRecurring, parentTaskId]);
 
   const handleUpdate = async () => {
     if (newStatus === currentStatus && newPriority === currentPriority && !comments.trim()) {
@@ -64,17 +116,36 @@ const StatusUpdateDialog: React.FC<StatusUpdateDialogProps> = ({
       return;
     }
 
+    // Check if we need confirmation for early completion
+    if (earlyCompletionWarning?.requiresConfirmation) {
+      setPendingUpdate({ status: newStatus, priority: newPriority, comments });
+      setShowConfirmDialog(true);
+      return;
+    }
+
+    await performUpdate(newStatus, newPriority, comments);
+  };
+
+  const performUpdate = async (status: string, priority: string, comments: string) => {
     setIsUpdating(true);
     try {
-      await onStatusUpdate(taskId, newStatus, newPriority, comments);
+      await onStatusUpdate(taskId, status, priority, comments);
       toast.success("Task status updated successfully");
       setOpen(false);
       setComments("");
+      setShowConfirmDialog(false);
+      setPendingUpdate(null);
     } catch (error) {
       toast.error("Failed to update task status");
       console.error("Status update error:", error);
     } finally {
       setIsUpdating(false);
+    }
+  };
+
+  const handleConfirmEarlyCompletion = () => {
+    if (pendingUpdate) {
+      performUpdate(pendingUpdate.status, pendingUpdate.priority, pendingUpdate.comments);
     }
   };
 
@@ -178,6 +249,19 @@ const StatusUpdateDialog: React.FC<StatusUpdateDialogProps> = ({
             />
           </div>
 
+          {/* Early Completion Warning */}
+          {earlyCompletionWarning && !earlyCompletionWarning.requiresConfirmation && (
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Early Completion</AlertTitle>
+              <AlertDescription>
+                {earlyCompletionWarning.isRecurring 
+                  ? `This recurring task is being completed early. Next instance will be due on ${earlyCompletionWarning.dueDateFormatted}.`
+                  : `This task is being completed ${earlyCompletionWarning.daysEarly} day(s) before its due date (${earlyCompletionWarning.dueDateFormatted}).`}
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Preview */}
           {(newStatus !== currentStatus || newPriority !== currentPriority) && (
             <div className="space-y-2">
@@ -196,7 +280,11 @@ const StatusUpdateDialog: React.FC<StatusUpdateDialogProps> = ({
 
           {/* Action Buttons */}
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setOpen(false)}>
+            <Button variant="outline" onClick={() => {
+              setOpen(false);
+              setShowConfirmDialog(false);
+              setPendingUpdate(null);
+            }}>
               Cancel
             </Button>
             <Button 
@@ -206,6 +294,45 @@ const StatusUpdateDialog: React.FC<StatusUpdateDialogProps> = ({
               {isUpdating ? "Updating..." : "Update Status"}
             </Button>
           </div>
+
+          {/* Confirmation Dialog for Early Completion */}
+          <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Complete Task Early?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {earlyCompletionWarning && (
+                    <div className="mt-4 space-y-2">
+                      <p>
+                        This task is due on <strong>{earlyCompletionWarning.dueDateFormatted}</strong>, 
+                        which is <strong>{earlyCompletionWarning.daysEarly} day(s)</strong> from now.
+                      </p>
+                      {earlyCompletionWarning.isRecurring ? (
+                        <p className="text-sm text-muted-foreground">
+                          For recurring tasks, the next instance will be generated based on the original due date.
+                        </p>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          Are you sure you want to mark this task as completed now?
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel onClick={() => {
+                  setShowConfirmDialog(false);
+                  setPendingUpdate(null);
+                }}>
+                  Cancel
+                </AlertDialogCancel>
+                <AlertDialogAction onClick={handleConfirmEarlyCompletion} disabled={isUpdating}>
+                  {isUpdating ? "Updating..." : "Yes, Complete Now"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </DialogContent>
     </Dialog>

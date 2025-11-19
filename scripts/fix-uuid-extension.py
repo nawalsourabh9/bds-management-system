@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fix the task_history trigger function to use correct user_id instead of updated_at timestamp
+Enable uuid-ossp extension and fix trigger to use gen_random_uuid() as fallback
 """
 
 import os
@@ -74,9 +74,25 @@ def get_db_connection(config):
         logger.error(f"✗ Failed to connect to database: {e}")
         return None
 
-def apply_fix(conn):
+def enable_uuid_extension(conn):
+    """Enable uuid-ossp extension"""
+    try:
+        cursor = conn.cursor()
+        # Try to enable uuid-ossp extension
+        cursor.execute("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";")
+        cursor.close()
+        logger.info("✓ Enabled uuid-ossp extension")
+        return True
+    except Exception as e:
+        logger.warning(f"⚠ Could not enable uuid-ossp extension: {e}")
+        logger.info("Will use gen_random_uuid() instead")
+        return False
+
+def apply_fix(conn, use_gen_random_uuid=False):
     """Apply the trigger function fix"""
-    fix_sql = """
+    uuid_func = "gen_random_uuid()" if use_gen_random_uuid else "uuid_generate_v4()"
+    
+    fix_sql = f"""
 CREATE OR REPLACE FUNCTION log_task_changes_with_notifications()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -84,14 +100,13 @@ BEGIN
         -- Log status changes
         IF OLD.status != NEW.status THEN
             INSERT INTO task_history (id, task_id, user_id, action, field_name, old_value, new_value)
-            VALUES (gen_random_uuid(), NEW.id, COALESCE(NEW.created_by, NEW.assignee_id), 'status_changed', 'status', OLD.status, NEW.status);
+            VALUES ({uuid_func}, NEW.id, COALESCE(NEW.created_by, NEW.assignee_id), 'status_changed', 'status', OLD.status, NEW.status);
             
             -- Send notifications for status changes
             -- Notification to assignee
             IF NEW.assignee_id IS NOT NULL THEN
-                INSERT INTO notifications (id, user_id, title, message, type, created_at)
+                INSERT INTO notifications (user_id, title, message, type, created_at)
                 VALUES (
-                    gen_random_uuid(),
                     NEW.assignee_id,
                     'Task Status Updated',
                     'Task "' || NEW.title || '" status changed from ' || OLD.status || ' to ' || NEW.status || '.',
@@ -102,9 +117,8 @@ BEGIN
             
             -- Notification to creator (if different from assignee)
             IF NEW.created_by IS NOT NULL AND NEW.created_by != NEW.assignee_id THEN
-                INSERT INTO notifications (id, user_id, title, message, type, created_at)
+                INSERT INTO notifications (user_id, title, message, type, created_at)
                 VALUES (
-                    gen_random_uuid(),
                     NEW.created_by,
                     'Task Status Updated',
                     'Task "' || NEW.title || '" status changed from ' || OLD.status || ' to ' || NEW.status || '.',
@@ -122,19 +136,18 @@ BEGIN
         -- Log priority changes
         IF OLD.priority != NEW.priority THEN
             INSERT INTO task_history (id, task_id, user_id, action, field_name, old_value, new_value)
-            VALUES (gen_random_uuid(), NEW.id, COALESCE(NEW.created_by, NEW.assignee_id), 'priority_changed', 'priority', OLD.priority, NEW.priority);
+            VALUES ({uuid_func}, NEW.id, COALESCE(NEW.created_by, NEW.assignee_id), 'priority_changed', 'priority', OLD.priority, NEW.priority);
         END IF;
         
         -- Log assignment changes
         IF OLD.assignee_id != NEW.assignee_id THEN
             INSERT INTO task_history (id, task_id, user_id, action, field_name, old_value, new_value)
-            VALUES (gen_random_uuid(), NEW.id, COALESCE(NEW.created_by, NEW.assignee_id), 'assignee_changed', 'assignee_id', OLD.assignee_id::text, NEW.assignee_id::text);
+            VALUES ({uuid_func}, NEW.id, COALESCE(NEW.created_by, NEW.assignee_id), 'assignee_changed', 'assignee_id', OLD.assignee_id::text, NEW.assignee_id::text);
             
             -- Notification to new assignee
             IF NEW.assignee_id IS NOT NULL THEN
-                INSERT INTO notifications (id, user_id, title, message, type, created_at)
+                INSERT INTO notifications (user_id, title, message, type, created_at)
                 VALUES (
-                    gen_random_uuid(),
                     NEW.assignee_id,
                     'Task Assigned to You',
                     'Task "' || NEW.title || '" has been assigned to you.',
@@ -154,7 +167,7 @@ $$ language 'plpgsql';
         cursor = conn.cursor()
         cursor.execute(fix_sql)
         cursor.close()
-        logger.info("✓ Trigger function fixed successfully")
+        logger.info(f"✓ Trigger function fixed successfully (using {uuid_func})")
         return True
     except Exception as e:
         logger.error(f"✗ Error applying fix: {e}")
@@ -162,7 +175,7 @@ $$ language 'plpgsql';
 
 def main():
     """Main function"""
-    logger.info("🚀 Fixing task_history trigger function...")
+    logger.info("🚀 Fixing UUID generation in task_history trigger function...")
     
     # Get database configuration
     config = get_database_config()
@@ -177,8 +190,11 @@ def main():
         sys.exit(1)
     
     try:
-        # Apply the fix
-        success = apply_fix(conn)
+        # Try to enable uuid-ossp extension
+        uuid_extension_enabled = enable_uuid_extension(conn)
+        
+        # Apply the fix (use gen_random_uuid if extension not available)
+        success = apply_fix(conn, use_gen_random_uuid=not uuid_extension_enabled)
         
         if success:
             logger.info("🎉 Trigger function fixed successfully!")
