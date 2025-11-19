@@ -10,7 +10,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
 
 export default function Index() {
-  const { tasks, loading, error } = useTasks();
+  const { data: tasks = [], isLoading: loading, error } = useTasks();
   const { employee } = useAuth();
 
   if (loading) {

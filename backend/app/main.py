@@ -2097,13 +2097,17 @@ async def full_update_task(task_id: str, task_data: dict):
             # Don't fail the operation if notification fails
         
         # Check if task was marked as completed and is a child task
-        if 'status' in task_db_data and task_db_data['status'] == 'completed':
+        # IMPORTANT: Only generate new child if transitioning FROM non-completed TO completed
+        # This prevents duplicate generation when marking completed -> in-progress -> completed again
+        old_status = old_task.get('status')
+        new_status = task_db_data.get('status')
+        
+        if 'status' in task_db_data and new_status == 'completed' and old_status != 'completed':
             try:
-                
                 # Get the task details to check if it's a child task
                 task_details = db_service.get_task_by_id(task_id)
                 if task_details and task_details.get('parent_task_id'):
-                    logger.info(f"Child task {task_id} completed, checking for parent automation...")
+                    logger.info(f"Child task {task_id} completed (transitioned from {old_status} to completed), checking for parent automation...")
                     
                     # Get parent task details
                     parent_task = db_service.get_task_by_id(task_details['parent_task_id'])
@@ -2125,40 +2129,51 @@ async def full_update_task(task_id: str, task_data: dict):
                             except Exception as e:
                                 logger.error(f"Error parsing parent end date: {e}")
                         
-                        # Generate next child task using the database function
+                        # Check if next child already exists for this parent to prevent duplicates
                         try:
-                            result = db_service.execute_query("""
-                                SELECT generate_next_child_task(%(completed_child_id)s) as child_task_id;
-                            """, {
-                                "completed_child_id": task_id
-                            })
+                            existing_next_child = db_service.execute_query("""
+                                SELECT id FROM tasks 
+                                WHERE parent_task_id = %(parent_id)s 
+                                AND status != 'completed'
+                                ORDER BY due_date ASC
+                                LIMIT 1
+                            """, {"parent_id": task_details['parent_task_id']})
                             
-                            if result and len(result) > 0 and result[0]["child_task_id"]:
-                                child_task_id = result[0]["child_task_id"]
-                                logger.info(f"Next child task created successfully: {child_task_id}")
+                            if existing_next_child and len(existing_next_child) > 0:
+                                logger.info(f"Next child task already exists (id: {existing_next_child[0]['id']}), skipping generation")
+                            else:
+                                # Generate next child task using the database function
+                                result = db_service.execute_query("""
+                                    SELECT generate_next_child_task(%(completed_child_id)s) as child_task_id;
+                                """, {
+                                    "completed_child_id": task_id
+                                })
                                 
-                                # Create notification for the assignee
-                                try:
-                                    notification_title = f"New Task Assigned: {parent_task['title']}"
-                                    notification_message = f"A new instance of recurring task '{parent_task['title']}' has been assigned to you."
+                                if result and len(result) > 0 and result[0]["child_task_id"]:
+                                    child_task_id = result[0]["child_task_id"]
+                                    logger.info(f"Next child task created successfully: {child_task_id}")
                                     
-                                    db_service.create_notification(
-                                        user_id=task_details.get('assignee_id'),
-                                        title=notification_title,
-                                        message=notification_message,
-                                        notification_type='info',
-                                        task_id=str(child_task_id)
-                                    )
-                                    logger.info(f"Notification created for assignee {task_details.get('assignee_id')}")
-                                except Exception as notification_error:
-                                    logger.error(f"Failed to create notification: {notification_error}")
-                                    
+                                    # Create notification for the assignee
+                                    try:
+                                        notification_title = f"New Task Assigned: {parent_task['title']}"
+                                        notification_message = f"A new instance of recurring task '{parent_task['title']}' has been assigned to you."
+                                        
+                                        db_service.create_notification(
+                                            user_id=str(task_details.get('assignee_id')),
+                                            title=notification_title,
+                                            message=notification_message,
+                                            notification_type='info',
+                                            task_id=str(child_task_id)
+                                        )
+                                        logger.info(f"Notification created for assignee {task_details.get('assignee_id')}")
+                                    except Exception as notification_error:
+                                        logger.error(f"Failed to create notification: {notification_error}")
                         except Exception as generation_error:
-                            logger.error(f"Failed to generate next child task: {generation_error}")
+                            logger.error(f"Failed to generate next child task: {generation_error}", exc_info=True)
                             # Don't fail the entire operation if child generation fails
                             
             except Exception as e:
-                logger.error(f"Error in task completion automation: {e}")
+                logger.error(f"Error in task completion automation: {e}", exc_info=True)
                 # Don't fail the entire operation if automation fails
         
         return {
@@ -2224,9 +2239,10 @@ async def update_task_status(task_id: str, status_data: dict):
         if not success:
             raise HTTPException(status_code=404, detail="Task not found")
         
-        # Notify about status change
+        # Notify about status change - ensure notifications are created with task_id
         if old_status != status_data['status']:
             try:
+                logger.info(f"Task {task_id} status changed from '{old_status}' to '{status_data['status']}', creating notifications...")
                 notify_task_update(
                     task_id=task_id,
                     change_type="Status Changed",
@@ -2234,11 +2250,13 @@ async def update_task_status(task_id: str, status_data: dict):
                     old_value=old_status,
                     new_value=status_data['status']
                 )
+                logger.info(f"Notifications created for task {task_id} status change")
             except Exception as notification_error:
-                logger.error(f"Failed to send notification for status change: {notification_error}")
+                logger.error(f"Failed to send notification for status change: {notification_error}", exc_info=True)
         
         # If marking as completed, check if this is a child task and trigger next generation
-        if status_data['status'] == 'completed':
+        # IMPORTANT: Only generate if transitioning FROM non-completed TO completed
+        if status_data['status'] == 'completed' and old_status != 'completed':
             # Check if this is a child task
             child_task = db_service.execute_query(
                 "SELECT parent_task_id, assignee_id, priority FROM tasks WHERE id = %s AND is_parent_task = FALSE",
@@ -2271,14 +2289,40 @@ async def update_task_status(task_id: str, status_data: dict):
                         
                         # Check if we're within the parent's end date
                         if not parent_end_date or next_date <= parent_end_date:
-                            # Generate next child task
-                            new_child_id = db_service.execute_query(
-                                "SELECT generate_next_child_task(%s) as child_id",
-                                (task_id,)
+                            # Check if next child already exists to prevent duplicates
+                            existing_next_child = db_service.execute_query(
+                                "SELECT id FROM tasks WHERE parent_task_id = %s AND status != 'completed' ORDER BY due_date ASC LIMIT 1",
+                                (parent_id,)
                             )
                             
-                            if new_child_id:
-                                logger.info(f"Generated next child task: {new_child_id[0]['child_id']}")
+                            if existing_next_child and len(existing_next_child) > 0:
+                                logger.info(f"Next child task already exists (id: {existing_next_child[0]['id']}), skipping generation")
+                            else:
+                                # Generate next child task
+                                new_child_id = db_service.execute_query(
+                                    "SELECT generate_next_child_task(%s) as child_id",
+                                    (task_id,)
+                                )
+                                
+                                if new_child_id:
+                                    logger.info(f"Generated next child task: {new_child_id[0]['child_id']}")
+                                    
+                                    # Create notification for the assignee
+                                    try:
+                                        parent_task_details = db_service.get_task_by_id(parent_id)
+                                        notification_title = f"New Task Assigned: {parent_task_details.get('title', 'Recurring Task')}"
+                                        notification_message = f"A new instance of recurring task has been assigned to you."
+                                        
+                                        db_service.create_notification(
+                                            user_id=str(assignee_id),
+                                            title=notification_title,
+                                            message=notification_message,
+                                            notification_type='info',
+                                            task_id=str(new_child_id[0]['child_id'])
+                                        )
+                                        logger.info(f"Notification created for assignee {assignee_id}")
+                                    except Exception as notification_error:
+                                        logger.error(f"Failed to create notification: {notification_error}")
         
         response = {
             "message": "Task status updated successfully",
