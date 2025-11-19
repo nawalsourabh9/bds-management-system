@@ -35,7 +35,14 @@ export default function Index() {
 
   // Safety check for tasks
   const safeTasks = tasks || [];
-  const currentUserId = employee?.id;
+  const currentUserId = employee?.id; // UUID from database
+  const currentEmployeeId = employee?.employee_id; // Display ID like "EMP002"
+
+  console.log("Dashboard - Current user:", { 
+    userId: currentUserId, 
+    employeeId: currentEmployeeId,
+    totalTasks: safeTasks.length 
+  });
 
   // Calculate comprehensive stats
   const totalTasks = safeTasks.length;
@@ -52,7 +59,16 @@ export default function Index() {
   }).length;
 
   // User-specific statistics
-  const userAssignedTasks = safeTasks.filter(task => task.assignee === currentUserId);
+  // Match by UUID (assignee_id) - this is the primary identifier
+  // task.assignee should be the UUID from assignee_id, not employee_id
+  const userAssignedTasks = safeTasks.filter(task => {
+    // task.assignee should be UUID (assignee_id), compare with currentUserId (UUID)
+    const matches = task.assignee === currentUserId;
+    if (matches) {
+      console.log("Matched task:", { taskId: task.id, title: task.title, assignee: task.assignee });
+    }
+    return matches;
+  });
   const userCreatedTasks = safeTasks.filter(task => task.createdBy === currentUserId);
   
   const userPendingTasks = userAssignedTasks.filter(task => task.status === 'pending' || task.status === 'not-started').length;

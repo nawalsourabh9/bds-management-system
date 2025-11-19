@@ -134,15 +134,39 @@ def notify_task_update(task_id: str, change_type: str, change_details: str, old_
             message = f"Task '{task_title}' {change_details}."
         
         # Notify assignee if task is assigned
+        # assignee_id from task should be UUID (user.id), not employee_id
         if assignee_id:
             try:
+                # Ensure assignee_id is UUID, not employee_id
+                # If it's an employee_id string, convert it to user_id
+                notification_user_id = str(assignee_id)
+                
+                # Check if assignee_id looks like an employee_id (e.g., "EMP002") vs UUID
+                import uuid
+                try:
+                    # Try to parse as UUID - if it works, it's already a UUID
+                    uuid.UUID(str(assignee_id))
+                    notification_user_id = str(assignee_id)
+                    logger.info(f"Creating notification with UUID user_id: {notification_user_id}")
+                except (ValueError, AttributeError):
+                    # If not a UUID, it might be employee_id - convert to user_id
+                    logger.warning(f"assignee_id '{assignee_id}' is not a UUID, attempting to find user by employee_id")
+                    user_by_employee = db_service.get_user_by_employee_id(str(assignee_id))
+                    if user_by_employee and user_by_employee.get('id'):
+                        notification_user_id = str(user_by_employee['id'])
+                        logger.info(f"Found user_id {notification_user_id} for employee_id {assignee_id}")
+                    else:
+                        logger.error(f"Could not find user for employee_id {assignee_id}, skipping notification")
+                        return
+                
                 db_service.create_notification(
-                    user_id=str(assignee_id),
+                    user_id=notification_user_id,
                     title=f"Task {change_type}",
                     message=message,
                     notification_type='info',
                     task_id=task_id
                 )
+                logger.info(f"✅ Created notification for user {notification_user_id} (task: {task_id})")
                 
                 # Also notify assignee's supervisor (reports_to)
                 try:

@@ -40,8 +40,9 @@ export const useTasks = () => {
             title: item.title,
             description: item.description || "",
             department: item.department_name || item.department_id, // Use department name if available
-            // Use user id for selection in edit dialog; fall back to employee id
-            assignee: item.assignee_id || item.assignee_employee_id || "unassigned",
+            // Use UUID (assignee_id) as primary identifier for matching
+            // assignee_id is the UUID from users.id, which is what we use for filtering
+            assignee: item.assignee_id || "unassigned", // Use UUID, not employee_id for matching
             priority: item.priority as 'low' | 'medium' | 'high',
             dueDate: item.due_date || "",
             status: item.status as 'completed' | 'in-progress' | 'overdue' | 'not-started',
