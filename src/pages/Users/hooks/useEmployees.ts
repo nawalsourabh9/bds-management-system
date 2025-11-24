@@ -20,25 +20,31 @@ export const useEmployees = () => {
       const usersData = response.users || [];
 
       // Map database fields to our Employee type
-      const formattedEmployees: Employee[] = usersData.map((user: any) => ({
-        id: user.id,
-        name: `${user.first_name} ${user.last_name}`,
-        email: user.email,
-        role: user.role,
-        department: user.department_id || '', // Store department ID for API calls
-        department_name: user.parent_department_name 
-          ? `${user.department_name} (${user.parent_department_name})` 
-          : user.department_name || 'No Department', // Store department name with parent for display
-        employeeId: user.employee_id || 'Not Set',
-        position: user.position_id || undefined, // Store position ID for API calls
-        position_name: user.position_name || 'No Position', // Store position name for display
-        status: user.is_active ? "Active" : "Inactive",
-        phone: user.phone || undefined,
-        supervisorId: user.reports_to_id || undefined,
-        reports_to_name: user.reports_to_name || 'No Manager', // Store reports-to name for display
-        created_at: user.created_at,
-        updated_at: user.updated_at
-      }));
+      const formattedEmployees: Employee[] = usersData.map((user: any) => {
+        // If user is in a sub-department, separate main and sub
+        const isSubDepartment = !!user.parent_department_id;
+        const mainDepartmentName = isSubDepartment ? user.parent_department_name : user.department_name;
+        const subDepartmentName = isSubDepartment ? user.department_name : undefined;
+        
+        return {
+          id: user.id,
+          name: `${user.first_name} ${user.last_name || ''}`.trim(),
+          email: user.email || '',
+          role: user.role,
+          department: user.department_id || '', // Store department ID for API calls
+          department_name: mainDepartmentName || 'No Department', // Main department name
+          sub_department_name: subDepartmentName, // Sub-department name if applicable
+          employeeId: user.employee_id || 'Not Set',
+          position: user.position_id || undefined, // Store position ID for API calls
+          position_name: user.position_name || 'No Position', // Store position name for display
+          status: user.is_active ? "Active" : "Inactive",
+          phone: user.phone || undefined,
+          supervisorId: user.reports_to_id || undefined,
+          reports_to_name: user.reports_to_name || 'No Manager', // Store reports-to name for display
+          created_at: user.created_at,
+          updated_at: user.updated_at
+        };
+      });
 
       setEmployees(formattedEmployees);
     } catch (error) {
@@ -56,9 +62,9 @@ export const useEmployees = () => {
       
       const response = await fastapiService.createUser({
         employee_id: employeeData.employeeId,
-        email: employeeData.email,
+        email: employeeData.email || undefined, // Allow undefined for optional email
         first_name: employeeData.name.split(' ')[0],
-        last_name: employeeData.name.split(' ').slice(1).join(' '),
+        last_name: employeeData.name.split(' ').slice(1).join(' ') || undefined,
         role: employeeData.role,
         department_id: finalDepartmentId || null,
         position_id: employeeData.position || null,
@@ -82,9 +88,9 @@ export const useEmployees = () => {
       
       await fastapiService.updateUser(id, {
         employee_id: employeeData.employeeId,
-        email: employeeData.email,
+        email: employeeData.email || undefined, // Allow undefined for optional email
         first_name: employeeData.name?.split(' ')[0],
-        last_name: employeeData.name?.split(' ').slice(1).join(' '),
+        last_name: employeeData.name?.split(' ').slice(1).join(' ') || undefined,
         role: employeeData.role,
         department_id: finalDepartmentId || null,
         position_id: employeeData.position || null,

@@ -45,8 +45,8 @@ export default function Profile() {
       if (currentUser) {
         const userData = {
           id: currentUser.id,
-          name: `${currentUser.first_name} ${currentUser.last_name}`,
-          email: currentUser.email,
+          name: `${currentUser.first_name} ${currentUser.last_name || ''}`.trim(),
+          email: currentUser.email || '',
           employee_id: currentUser.employee_id,
           role: currentUser.role,
           department: currentUser.department_name || "",
@@ -245,7 +245,7 @@ export default function Profile() {
                   id="email"
                   name="email"
                   type="email"
-                  value={formData.email}
+                  value={formData.email || ''}
                   onChange={handleInputChange}
                   disabled={!editing}
                   className="rounded-sm"

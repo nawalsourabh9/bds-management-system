@@ -3,8 +3,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import uvicorn
-from app.core.config import settings
+from app.core.config import settings, mask_sensitive_info
 from app.database_service import db_service
+from app.position_helpers import (
+    notify_position_holders,
+    get_department_summary_for_user,
+    get_position_holders_for_department,
+    get_departments_for_position
+)
 from datetime import datetime, date
 from pydantic import BaseModel
 import os
@@ -35,7 +41,9 @@ def get_admin_users_for_notification():
             admin_users = cur.fetchall()
             return [dict(user) for user in admin_users]
     except Exception as e:
-        logger.error(f"Error fetching admin users for notifications: {e}")
+        # Mask sensitive information in error messages
+        error_msg = mask_sensitive_info(str(e))
+        logger.error(f"Error fetching admin users for notifications: {error_msg}")
         return []
     finally:
         if conn:
@@ -132,6 +140,21 @@ def notify_task_update(task_id: str, change_type: str, change_details: str, old_
             message = f"Task '{task_title}' {change_details}: Changed from '{old_value}' to '{new_value}'."
         else:
             message = f"Task '{task_title}' {change_details}."
+        
+        # Notify position holders for the department about task updates
+        task_department_id = task.get('department_id')
+        if task_department_id:
+            try:
+                notify_position_holders(
+                    department_id=str(task_department_id),
+                    title=f"Task Updated: {task_title}",
+                    message=message,
+                    notification_type='info',
+                    task_id=task_id,
+                    exclude_user_id=assignee_id  # Don't notify assignee again (they get direct notification)
+                )
+            except Exception as pos_notif_error:
+                logger.error(f"Failed to notify position holders: {pos_notif_error}")
         
         # Notify assignee if task is assigned
         # assignee_id from task should be UUID (user.id), not employee_id
@@ -282,15 +305,27 @@ app.add_middleware(
 # Startup and shutdown events
 @app.on_event("startup")
 async def startup_event():
-    """Startup event - initialize scheduler if available"""
+    """Startup event - initialize scheduler and test database connection"""
     logger.info("BDS Management System starting up...")
     
+    # Test database connection
+    try:
+        users = db_service.get_users()
+        logger.info(f"Database connection successful. Found {len(users)} users.")
+    except Exception as e:
+        # Mask sensitive information in error messages
+        error_msg = mask_sensitive_info(str(e))
+        logger.error(f"Startup database connection error: {error_msg}")
+    
+    # Initialize scheduler if available
     if SCHEDULER_AVAILABLE:
         try:
             await start_simple_scheduler()
             logger.info("Simple database scheduler started successfully")
         except Exception as e:
-            logger.error(f"Failed to start simple scheduler: {e}")
+            # Mask sensitive information in error messages
+            error_msg = mask_sensitive_info(str(e))
+            logger.error(f"Failed to start simple scheduler: {error_msg}")
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -340,15 +375,7 @@ class TaskUpdate(BaseModel):
     customer_name: str = None
     attachments_required: str = None
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize database on startup"""
-    try:
-        # Test database connection by trying to get users
-        users = db_service.get_users()
-        logger.info(f"Database connection successful. Found {len(users)} users.")
-    except Exception as e:
-        logger.error(f"Startup error: {e}")
+# Removed duplicate startup event - merged into the one above
 
 # Check if running as Celery worker
 if settings.CELERY_WORKER:
@@ -1046,16 +1073,17 @@ async def get_user(user_id: str):
 async def create_user(user_data: dict):
     """Create a new user"""
     try:
-        # Validate required fields
-        required_fields = ['employee_id', 'email', 'first_name', 'last_name', 'role']
+        # Validate required fields (last_name and email are optional)
+        required_fields = ['employee_id', 'first_name', 'role']
         for field in required_fields:
             if not user_data.get(field):
                 raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
         
-        # Check if user already exists by email
-        existing_user = db_service.get_user_by_email(user_data['email'])
-        if existing_user:
-            raise HTTPException(status_code=400, detail="User with this email already exists")
+        # Check if user already exists by email (only if email is provided)
+        if user_data.get('email'):
+            existing_user = db_service.get_user_by_email(user_data['email'])
+            if existing_user:
+                raise HTTPException(status_code=400, detail="User with this email already exists")
         
         # Check if employee_id already exists
         existing_employee = db_service.get_user_by_employee_id(user_data['employee_id'])
@@ -1089,10 +1117,10 @@ async def create_user(user_data: dict):
                 """, (
                     str(uuid.uuid4()),
                     user_data['employee_id'],
-                    user_data['email'],
+                    user_data.get('email'),  # Allow NULL
                     password_hash,
                     user_data['first_name'],
-                    user_data['last_name'],
+                    user_data.get('last_name'),  # Allow NULL
                     user_data['role'],
                     user_data.get('department_id'),
                     user_data.get('reports_to_id'),
@@ -1104,10 +1132,12 @@ async def create_user(user_data: dict):
                 
                 # Notify admins/managers/superadmins about new user creation
                 try:
-                    user_name = f"{user_data['first_name']} {user_data['last_name']}"
+                    last_name = user_data.get('last_name', '')
+                    user_name = f"{user_data['first_name']} {last_name}".strip()
+                    email_info = user_data.get('email', 'No email')
                     notify_admins(
                         title="New User Created",
-                        message=f"New user '{user_name}' ({user_data['email']}) with role '{user_data['role']}' has been created.",
+                        message=f"New user '{user_name}' ({email_info}) with role '{user_data['role']}' has been created.",
                         notification_type='info'
                     )
                 except Exception as notification_error:
@@ -1316,6 +1346,18 @@ async def delete_department(department_id: str):
         if not existing_department:
             raise HTTPException(status_code=404, detail="Department not found")
         
+        # Check if department has sub-departments
+        sub_departments = db_service.execute_query(
+            "SELECT COUNT(*) as count FROM departments WHERE parent_department_id = %s", 
+            (department_id,)
+        )
+        
+        if sub_departments and sub_departments[0]['count'] > 0:
+            raise HTTPException(
+                status_code=400, 
+                detail="Cannot delete department. Delete or reassign sub-departments first."
+            )
+        
         # Check if department has users
         users_in_department = db_service.execute_query(
             "SELECT COUNT(*) as count FROM users WHERE department_id = %s", 
@@ -1384,10 +1426,20 @@ async def get_position(position_id: str):
 async def create_position(position_data: dict):
     """Create a new position"""
     try:
-        required_fields = ['name', 'department_id']
+        required_fields = ['name']
         for field in required_fields:
             if not position_data.get(field):
                 raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+        
+        # Validate: either applies_to_all_departments is True, or department_ids is provided
+        applies_to_all = position_data.get('applies_to_all_departments', False)
+        department_ids = position_data.get('department_ids', [])
+        
+        if not applies_to_all and not department_ids and not position_data.get('department_id'):
+            raise HTTPException(
+                status_code=400, 
+                detail="Either 'applies_to_all_departments' must be True, or 'department_ids' must be provided"
+            )
         
         new_position = db_service.create_position(position_data)
         
@@ -1727,6 +1779,20 @@ async def create_task(task_data: dict):
                         task_id=str(task_id)
                     )
                     logger.info(f"Notification created for assignee {task_db_data['assignee_id']}")
+                    
+                    # Notify position holders for the department
+                    if task_db_data.get('department_id'):
+                        try:
+                            notify_position_holders(
+                                department_id=str(task_db_data['department_id']),
+                                title=f"New Task in Department: {task_db_data['title']}",
+                                message=f"A new task '{task_db_data['title']}' has been created in your department.",
+                                notification_type='info',
+                                task_id=str(task_id),
+                                exclude_user_id=task_db_data.get('assignee_id')  # Don't notify assignee again
+                            )
+                        except Exception as pos_notif_error:
+                            logger.error(f"Failed to notify position holders: {pos_notif_error}")
                     
                     # Also notify assignee's supervisor
                     supervisor_id = get_user_supervisor(str(task_db_data['assignee_id']))
@@ -2837,6 +2903,39 @@ async def create_admin():
         return {"message": "Admin created successfully"}
     except Exception as e:
         logger.error(f"Error creating admin: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+# Department Summary Endpoint
+@app.get("/api/v1/users/{user_id}/department-summary")
+async def get_user_department_summary(user_id: str):
+    """Get department summary for a user based on their position"""
+    try:
+        summary = get_department_summary_for_user(user_id)
+        return summary
+    except Exception as e:
+        logger.error(f"Error getting department summary: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+# Position Holders Endpoint
+@app.get("/api/v1/departments/{department_id}/position-holders")
+async def get_department_position_holders(department_id: str):
+    """Get all position holders for a department"""
+    try:
+        holders = get_position_holders_for_department(department_id)
+        return {"position_holders": holders}
+    except Exception as e:
+        logger.error(f"Error getting position holders: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+# Position Departments Endpoint
+@app.get("/api/v1/positions/{position_id}/departments")
+async def get_position_departments(position_id: str):
+    """Get all departments that a position applies to"""
+    try:
+        departments = get_departments_for_position(position_id)
+        return {"departments": departments}
+    except Exception as e:
+        logger.error(f"Error getting position departments: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 # HROne Integration Endpoint

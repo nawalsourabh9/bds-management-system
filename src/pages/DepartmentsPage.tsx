@@ -36,14 +36,17 @@ interface Department {
   sub_department_name?: string;
   positions?: Position[];
   sub_departments?: Department[];
+  users?: User[];
 }
 
 interface User {
   id: string;
   first_name: string;
-  last_name: string;
+  last_name: string | null;
   email: string;
   role: string;
+  position_name?: string;
+  employee_id?: string;
 }
 
 export default function DepartmentsPage() {
@@ -60,7 +63,7 @@ export default function DepartmentsPage() {
     manager_id: '',
     parent_department_id: '',
     has_sub_department: false,
-    sub_department_name: '',
+    sub_departments: [] as Array<{ name: string; description: string }>, // Multiple sub-departments
   });
   const { toast } = useToast();
 
@@ -109,17 +112,50 @@ export default function DepartmentsPage() {
             // Build sub-departments array for this department
             const subDepartments = deptData
               .filter((otherDept: any) => otherDept.parent_department_id === dept.id)
-              .map((subDept: any) => {
+              .map(async (subDept: any) => {
                 const subUserCount = usersResponse.users?.filter((user: any) => 
                   user.department_id === subDept.id
                 ).length || 0;
+                
+                // Fetch positions for this sub-department
+                let subPositions: Position[] = [];
+                try {
+                  const positionsResponse = await fastapiService.getPositions(subDept.id);
+                  subPositions = positionsResponse.positions || [];
+                } catch (error) {
+                  console.error(`Error fetching positions for sub-department ${subDept.id}:`, error);
+                }
+                
+                // Get users for this sub-department
+                const subUsers = usersResponse.users?.filter((user: any) => 
+                  user.department_id === subDept.id
+                ) || [];
                 
                 return {
                   ...subDept,
                   user_count: subUserCount,
                   department_type: 'sub_department',
+                  positions: subPositions,
+                  users: subUsers,
                 };
               });
+            
+            // Wait for all sub-department data to be fetched
+            const subDepartmentsWithData = await Promise.all(subDepartments);
+            
+            // Fetch positions for main department
+            let mainPositions: Position[] = [];
+            try {
+              const positionsResponse = await fastapiService.getPositions(dept.id);
+              mainPositions = positionsResponse.positions || [];
+            } catch (error) {
+              console.error(`Error fetching positions for department ${dept.id}:`, error);
+            }
+            
+            // Get users for main department
+            const mainUsers = usersResponse.users?.filter((user: any) => 
+              user.department_id === dept.id
+            ) || [];
             
             return {
               ...dept,
@@ -128,7 +164,9 @@ export default function DepartmentsPage() {
               sub_department_count: subDepartmentCount,
               parent_department_name: parentDepartmentName,
               department_type: isSubDepartment ? 'sub_department' : 'department',
-              sub_departments: subDepartments,
+              sub_departments: subDepartmentsWithData,
+              positions: mainPositions,
+              users: mainUsers,
             };
           } catch (error) {
             return {
@@ -192,21 +230,26 @@ export default function DepartmentsPage() {
         const mainDeptResp = await fastapiService.createDepartment(mainDeptData);
         const mainDepartment = (mainDeptResp && mainDeptResp.department) ? mainDeptResp.department : mainDeptResp;
         
-        // If sub-department is requested, create it
-        if (formData.has_sub_department && formData.sub_department_name) {
-          const subDeptData = {
-            name: formData.sub_department_name,
-            description: `Sub-department of ${formData.name}`,
-            manager_id: formData.manager_id || null,
-            parent_department_id: mainDepartment?.id,
-          };
-          await fastapiService.createDepartment(subDeptData);
+        // Create all sub-departments if any
+        if (formData.has_sub_department && formData.sub_departments.length > 0) {
+          const subDeptPromises = formData.sub_departments
+            .filter(subDept => subDept.name.trim()) // Only create non-empty sub-departments
+            .map(subDept => {
+              const subDeptData = {
+                name: subDept.name,
+                description: subDept.description || `Sub-department of ${formData.name}`,
+                manager_id: formData.manager_id || null,
+                parent_department_id: mainDepartment?.id,
+              };
+              return fastapiService.createDepartment(subDeptData);
+            });
+          await Promise.all(subDeptPromises);
         }
         
         toast({
           title: 'Success',
-          description: formData.has_sub_department 
-            ? 'Department and sub-department created successfully'
+          description: formData.has_sub_department && formData.sub_departments.length > 0
+            ? `Department and ${formData.sub_departments.filter(s => s.name.trim()).length} sub-department(s) created successfully`
             : 'Department created successfully',
         });
       }
@@ -237,28 +280,36 @@ export default function DepartmentsPage() {
       
       await fastapiService.updateDepartment(editingDepartment.id, updateData);
       
-      // If sub-department is requested and doesn't exist, create it
-      if (formData.has_sub_department && formData.sub_department_name) {
-        // Check if sub-department already exists
-        const existingSubDept = departments.find(dept => 
+      // Create/update sub-departments if any
+      if (formData.has_sub_department && formData.sub_departments.length > 0) {
+        // Get existing sub-departments
+        const existingSubDepts = departments.filter(dept => 
           dept.parent_department_id === editingDepartment.id
         );
         
-        if (!existingSubDept) {
-          const subDeptData = {
-            name: formData.sub_department_name,
-            description: `Sub-department of ${formData.name}`,
-            manager_id: formData.manager_id || null,
-            parent_department_id: editingDepartment.id,
-          };
-          await fastapiService.createDepartment(subDeptData);
+        // Create new sub-departments that don't exist yet
+        const newSubDepts = formData.sub_departments.filter(subDept => 
+          subDept.name && !existingSubDepts.find(existing => existing.name === subDept.name)
+        );
+        
+        if (newSubDepts.length > 0) {
+          const subDeptPromises = newSubDepts.map(subDept => {
+            const subDeptData = {
+              name: subDept.name,
+              description: subDept.description || `Sub-department of ${formData.name}`,
+              manager_id: formData.manager_id || null,
+              parent_department_id: editingDepartment.id,
+            };
+            return fastapiService.createDepartment(subDeptData);
+          });
+          await Promise.all(subDeptPromises);
         }
       }
       
       toast({
         title: 'Success',
-        description: formData.has_sub_department 
-          ? 'Department updated and sub-department created successfully'
+        description: formData.has_sub_department && formData.sub_departments.length > 0
+          ? `Department updated and ${formData.sub_departments.length} sub-department(s) created successfully`
           : 'Department updated successfully',
       });
       setIsEditDialogOpen(false);
@@ -284,10 +335,11 @@ export default function DepartmentsPage() {
         description: 'Department deleted successfully',
       });
       fetchDepartments();
-    } catch (error) {
+    } catch (error: any) {
+      const errorMessage = error?.message || error?.detail || 'Failed to delete department';
       toast({
         title: 'Error',
-        description: 'Failed to delete department',
+        description: errorMessage,
         variant: 'destructive',
       });
     }
@@ -295,13 +347,18 @@ export default function DepartmentsPage() {
 
   const openEditDialog = (department: Department) => {
     setEditingDepartment(department);
+    // Get existing sub-departments for this department
+    const existingSubDepts = departments
+      .filter(d => d.parent_department_id === department.id)
+      .map(d => ({ name: d.name, description: d.description || '' }));
+    
     setFormData({
       name: department.name,
       description: department.description || '',
       manager_id: department.manager_id || '',
       parent_department_id: department.parent_department_id || '',
-      has_sub_department: department.has_sub_department || false,
-      sub_department_name: department.sub_department_name || '',
+      has_sub_department: existingSubDepts.length > 0,
+      sub_departments: existingSubDepts.length > 0 ? existingSubDepts : [],
     });
     setIsEditDialogOpen(true);
   };
@@ -313,36 +370,42 @@ export default function DepartmentsPage() {
       manager_id: '',
       parent_department_id: '',
       has_sub_department: false,
-      sub_department_name: '',
+      sub_departments: [],
     });
   };
 
   // Group departments: main departments with their sub-departments
+  // First pass: create entries for ALL departments (main and sub)
   const groupedDepartments = departments.reduce((acc, dept) => {
-    if (!dept.parent_department_id) {
-      // Main department
-      acc[dept.id] = {
-        ...dept,
-        sub_departments: []
-      };
-    } else {
-      // Sub-department - find its parent
-      const parentId = dept.parent_department_id;
-      if (acc[parentId]) {
-        acc[parentId].sub_departments.push(dept);
-      }
-    }
+    acc[dept.id] = {
+      ...dept,
+      sub_departments: []
+    };
     return acc;
   }, {} as Record<string, Department & { sub_departments: Department[] }>);
 
-  const filteredDepartments = Object.values(groupedDepartments).filter(dept =>
-    dept.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (dept.description && dept.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    dept.sub_departments.some(sub => 
-      sub.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (sub.description && sub.description.toLowerCase().includes(searchTerm.toLowerCase()))
-    )
-  );
+  // Second pass: add sub-departments to their parents
+  departments.forEach(dept => {
+    if (dept.parent_department_id) {
+      const parentId = dept.parent_department_id;
+      // Parent should exist from first pass, but check to be safe
+      if (groupedDepartments[parentId]) {
+        groupedDepartments[parentId].sub_departments.push(dept);
+      }
+    }
+  });
+
+  // Only show main departments (those without a parent), with their sub-departments nested
+  const filteredDepartments = Object.values(groupedDepartments)
+    .filter(dept => !dept.parent_department_id) // Only main departments
+    .filter(dept =>
+      dept.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (dept.description && dept.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      dept.sub_departments.some(sub => 
+        sub.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (sub.description && sub.description.toLowerCase().includes(searchTerm.toLowerCase()))
+      )
+    );
 
   if (loading) {
     return (
@@ -371,7 +434,7 @@ export default function DepartmentsPage() {
           <Building2 className="h-8 w-8 text-blue-600" />
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Department Management</h1>
-            <p className="text-gray-600">Organize users into departments and assign managers</p>
+            <p className="text-gray-600">Organize users into departments and assign department heads</p>
           </div>
         </div>
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
@@ -430,23 +493,78 @@ export default function DepartmentsPage() {
                     type="checkbox"
                     id="has_sub_department"
                     checked={formData.has_sub_department}
-                    onChange={(e) => setFormData({ ...formData, has_sub_department: e.target.checked })}
+                    onChange={(e) => {
+                      const hasSub = e.target.checked;
+                      setFormData({
+                        ...formData,
+                        has_sub_department: hasSub,
+                        sub_departments: hasSub && formData.sub_departments.length === 0
+                          ? [{ name: '', description: '' }]
+                          : formData.sub_departments,
+                      });
+                    }}
                     className="rounded"
                     disabled={!!formData.parent_department_id}
                   />
                   <Label htmlFor="has_sub_department" className={formData.parent_department_id ? 'text-gray-400' : ''}>
-                    Has Sub-Department (only for main departments)
+                    Has Sub-Departments (only for main departments)
                   </Label>
                 </div>
                 {formData.has_sub_department && !formData.parent_department_id && (
                   <div className="space-y-2">
-                    <Label htmlFor="sub_department_name">Sub-Department Name</Label>
-                    <Input
-                      id="sub_department_name"
-                      value={formData.sub_department_name}
-                      onChange={(e) => setFormData({ ...formData, sub_department_name: e.target.value })}
-                      placeholder="Enter sub-department name"
-                    />
+                    <Label>Sub-Departments</Label>
+                    <div className="space-y-2">
+                      {formData.sub_departments.map((subDept, index) => (
+                        <div key={index} className="flex gap-2">
+                          <Input
+                            value={subDept.name}
+                            onChange={(e) => {
+                              const updated = [...formData.sub_departments];
+                              updated[index] = { ...updated[index], name: e.target.value };
+                              setFormData({ ...formData, sub_departments: updated });
+                            }}
+                            placeholder="Sub-department name"
+                            className="flex-1"
+                          />
+                          <Textarea
+                            value={subDept.description}
+                            onChange={(e) => {
+                              const updated = [...formData.sub_departments];
+                              updated[index] = { ...updated[index], description: e.target.value };
+                              setFormData({ ...formData, sub_departments: updated });
+                            }}
+                            placeholder="Description (optional)"
+                            className="flex-1"
+                            rows={1}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const updated = formData.sub_departments.filter((_, i) => i !== index);
+                              setFormData({ ...formData, sub_departments: updated });
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setFormData({
+                            ...formData,
+                            sub_departments: [...formData.sub_departments, { name: '', description: '' }],
+                          });
+                        }}
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Sub-Department
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -461,15 +579,15 @@ export default function DepartmentsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="manager">Department Manager (Optional)</Label>
+                <Label htmlFor="manager">Department Head (Optional)</Label>
                 <Select value={formData.manager_id} onValueChange={(value) => setFormData({ ...formData, manager_id: value })}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a manager" />
+                    <SelectValue placeholder="Select a department head" />
                   </SelectTrigger>
                 <SelectContent>
                   {users.map((user) => (
                     <SelectItem key={user.id} value={user.id}>
-                      {user.first_name} {user.last_name} ({user.email})
+                      {user.first_name} {user.last_name || ''} ({user.email || 'No email'})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -555,13 +673,35 @@ export default function DepartmentsPage() {
                       {department.manager_name && (
                         <div className="flex items-center gap-2">
                           <Users className="w-4 h-4 text-blue-600" />
-                          <span><strong>Manager:</strong> {department.manager_name}</span>
+                          <span><strong>Department Head:</strong> {department.manager_name}</span>
                         </div>
                       )}
                       <div className="flex items-center gap-2">
                         <Users className="w-4 h-4 text-green-600" />
                         <span><strong>Users:</strong> {department.user_count || 0}</span>
                       </div>
+                      
+                      {/* Main Department Users */}
+                      {department.users && department.users.length > 0 && (
+                        <div className="mt-2 pl-6">
+                          <div className="text-xs font-medium text-gray-700 mb-1">Department Users:</div>
+                          <div className="space-y-1">
+                            {department.users.slice(0, 5).map((user) => (
+                              <div key={user.id} className="text-xs text-gray-700">
+                                {user.first_name} {user.last_name || ''}
+                                {user.position_name && <span className="text-gray-500"> - {user.position_name}</span>}
+                                {user.employee_id && <span className="text-gray-400"> ({user.employee_id})</span>}
+                              </div>
+                            ))}
+                            {department.users.length > 5 && (
+                              <span className="text-xs text-gray-500">
+                                +{department.users.length - 5} more users
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      
                       <div className="text-xs text-gray-500">
                         Created: {new Date(department.created_at).toLocaleDateString()}
                       </div>
@@ -616,6 +756,33 @@ export default function DepartmentsPage() {
                                         {subDept.positions.length > 3 && (
                                           <span className="text-xs text-gray-500">
                                             +{subDept.positions.length - 3} more
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Sub-department users */}
+                                  {subDept.users && subDept.users.length > 0 && (
+                                    <div className="mt-2">
+                                      <div className="flex items-center gap-1 mb-1">
+                                        <Users className="w-3 h-3 text-green-600" />
+                                        <span className="text-xs font-medium text-gray-700">Users:</span>
+                                        <span className="text-xs bg-green-100 text-green-800 px-1 py-0.5 rounded">
+                                          {subDept.users.length}
+                                        </span>
+                                      </div>
+                                      <div className="space-y-1">
+                                        {subDept.users.slice(0, 3).map((user) => (
+                                          <div key={user.id} className="text-xs text-gray-700">
+                                            {user.first_name} {user.last_name || ''} 
+                                            {user.position_name && <span className="text-gray-500"> - {user.position_name}</span>}
+                                            {user.employee_id && <span className="text-gray-400"> ({user.employee_id})</span>}
+                                          </div>
+                                        ))}
+                                        {subDept.users.length > 3 && (
+                                          <span className="text-xs text-gray-500">
+                                            +{subDept.users.length - 3} more users
                                           </span>
                                         )}
                                       </div>
@@ -699,7 +866,7 @@ export default function DepartmentsPage() {
           <DialogHeader>
             <DialogTitle>Edit Department</DialogTitle>
             <DialogDescription>
-              Update department information and manager assignment.
+              Update department information and department head assignment.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -744,23 +911,78 @@ export default function DepartmentsPage() {
                   type="checkbox"
                   id="edit_has_sub_department"
                   checked={formData.has_sub_department}
-                  onChange={(e) => setFormData({ ...formData, has_sub_department: e.target.checked })}
+                  onChange={(e) => {
+                    const hasSub = e.target.checked;
+                    setFormData({
+                      ...formData,
+                      has_sub_department: hasSub,
+                      sub_departments: hasSub && formData.sub_departments.length === 0
+                        ? [{ name: '', description: '' }]
+                        : formData.sub_departments,
+                    });
+                  }}
                   className="rounded"
                   disabled={!!formData.parent_department_id}
                 />
                 <Label htmlFor="edit_has_sub_department" className={formData.parent_department_id ? 'text-gray-400' : ''}>
-                  Has Sub-Department (only for main departments)
+                  Has Sub-Departments (only for main departments)
                 </Label>
               </div>
               {formData.has_sub_department && !formData.parent_department_id && (
                 <div className="space-y-2">
-                  <Label htmlFor="edit_sub_department_name">Sub-Department Name</Label>
-                  <Input
-                    id="edit_sub_department_name"
-                    value={formData.sub_department_name}
-                    onChange={(e) => setFormData({ ...formData, sub_department_name: e.target.value })}
-                    placeholder="Enter sub-department name"
-                  />
+                  <Label>Sub-Departments</Label>
+                  <div className="space-y-2">
+                    {formData.sub_departments.map((subDept, index) => (
+                      <div key={index} className="flex gap-2">
+                        <Input
+                          value={subDept.name}
+                          onChange={(e) => {
+                            const updated = [...formData.sub_departments];
+                            updated[index] = { ...updated[index], name: e.target.value };
+                            setFormData({ ...formData, sub_departments: updated });
+                          }}
+                          placeholder="Sub-department name"
+                          className="flex-1"
+                        />
+                        <Textarea
+                          value={subDept.description}
+                          onChange={(e) => {
+                            const updated = [...formData.sub_departments];
+                            updated[index] = { ...updated[index], description: e.target.value };
+                            setFormData({ ...formData, sub_departments: updated });
+                          }}
+                          placeholder="Description (optional)"
+                          className="flex-1"
+                          rows={1}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const updated = formData.sub_departments.filter((_, i) => i !== index);
+                            setFormData({ ...formData, sub_departments: updated });
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setFormData({
+                          ...formData,
+                          sub_departments: [...formData.sub_departments, { name: '', description: '' }],
+                        });
+                      }}
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Sub-Department
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
@@ -775,15 +997,15 @@ export default function DepartmentsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit_manager">Department Manager (Optional)</Label>
+              <Label htmlFor="edit_manager">Department Head (Optional)</Label>
               <Select value={formData.manager_id} onValueChange={(value) => setFormData({ ...formData, manager_id: value })}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a manager" />
+                  <SelectValue placeholder="Select a department head" />
                 </SelectTrigger>
                 <SelectContent>
                   {users.map((user) => (
                     <SelectItem key={user.id} value={user.id}>
-                      {user.first_name} {user.last_name} ({user.email})
+                      {user.first_name} {user.last_name || ''} ({user.email || 'No email'})
                     </SelectItem>
                   ))}
                 </SelectContent>

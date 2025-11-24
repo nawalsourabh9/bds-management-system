@@ -3,7 +3,7 @@ import { z } from "zod";
 
 export const employeeFormSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
-  email: z.string().email({ message: "Please enter a valid email address." }),
+  email: z.string().email({ message: "Please enter a valid email address." }).optional().or(z.literal('')),
   role: z.string().min(1, { message: "Please select a role." }),
   department: z.string().min(1, { message: "Please select a department." }),
   subDepartment: z.string().optional(),
@@ -17,11 +17,12 @@ export const employeeFormSchema = z.object({
 export type Employee = {
   id: string;
   name: string;
-  email: string;
+  email: string | null; // Email is now optional
   role: string;
   department: string; // This will store department ID for API calls
   subDepartment?: string; // This will store sub-department ID for API calls
-  department_name?: string; // This will store department name for display
+  department_name?: string; // This will store main department name for display
+  sub_department_name?: string; // This will store sub-department name for display
   employeeId: string;
   position?: string; // This will store position ID for API calls
   position_name?: string; // This will store position name for display

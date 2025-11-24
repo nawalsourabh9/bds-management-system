@@ -26,6 +26,7 @@ export function EmployeeList({
             <th className="px-4 py-2 font-medium">Email</th>
             <th className="px-4 py-2 font-medium">Position</th>
             <th className="px-4 py-2 font-medium">Department</th>
+            <th className="px-4 py-2 font-medium">Sub-Department</th>
             <th className="px-4 py-2 font-medium">Reports To</th>
             <th className="px-4 py-2 font-medium">Role</th>
             <th className="px-4 py-2 font-medium">Status</th>
@@ -40,6 +41,9 @@ export function EmployeeList({
               <td className="px-4 py-2">{employee.email}</td>
               <td className="px-4 py-2">{employee.position_name || 'No Position'}</td>
               <td className="px-4 py-2">{employee.department_name || 'No Department'}</td>
+              <td className="px-4 py-2">
+                {employee.sub_department_name || <span className="text-gray-400">-</span>}
+              </td>
               <td className="px-4 py-2">{employee.reports_to_name || 'No Manager'}</td>
               <td className="px-4 py-2">{employee.role}</td>
               <td className="px-4 py-2">

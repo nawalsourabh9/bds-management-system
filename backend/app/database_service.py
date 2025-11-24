@@ -1,6 +1,6 @@
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from app.core.config import settings
+from app.core.config import settings, mask_sensitive_info
 import logging
 import uuid
 from datetime import datetime, date
@@ -28,7 +28,9 @@ class DatabaseService:
             conn = psycopg2.connect(self.connection_string)
             return conn
         except Exception as e:
-            logger.error(f"Database connection error: {e}")
+            # Mask sensitive information in error messages
+            error_msg = mask_sensitive_info(str(e))
+            logger.error(f"Database connection error: {error_msg}")
             raise
 
     def create_notification(self, user_id: str, title: str, message: str, notification_type: str = 'info', task_id: str = None):
@@ -201,6 +203,7 @@ class DatabaseService:
     
     def execute_query(self, query, params=None):
         """Execute a query and return results"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -212,7 +215,9 @@ class DatabaseService:
                     conn.commit()
                     return []
         except Exception as e:
-            logger.error(f"Error executing query: {e}")
+            # Mask sensitive information in error messages
+            error_msg = mask_sensitive_info(str(e))
+            logger.error(f"Error executing query: {error_msg}")
             raise
         finally:
             if conn:
@@ -918,29 +923,126 @@ class DatabaseService:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 if department_id:
+                    # Get positions that belong to this department or all departments
                     cur.execute("""
-                        SELECT p.*, d.name as department_name,
-                               d.parent_department_id,
-                               parent_d.name as parent_department_name
+                        SELECT DISTINCT p.*
                         FROM positions p
-                        JOIN departments d ON p.department_id = d.id
-                        LEFT JOIN departments parent_d ON d.parent_department_id = parent_d.id
-                        WHERE p.department_id = %s AND p.is_active = true
+                        LEFT JOIN position_departments pd ON p.id = pd.position_id
+                        WHERE p.is_active = true
+                        AND (p.applies_to_all_departments = true 
+                             OR pd.department_id = %s
+                             OR (p.department_id = %s AND NOT EXISTS (SELECT 1 FROM position_departments WHERE position_id = p.id)))
                         ORDER BY p.level DESC, p.name
-                    """, (department_id,))
+                    """, (department_id, department_id))
                 else:
                     cur.execute("""
-                        SELECT p.*, d.name as department_name,
-                               d.parent_department_id,
-                               parent_d.name as parent_department_name
+                        SELECT DISTINCT p.*
                         FROM positions p
-                        JOIN departments d ON p.department_id = d.id
-                        LEFT JOIN departments parent_d ON d.parent_department_id = parent_d.id
                         WHERE p.is_active = true
-                        ORDER BY d.name, p.level DESC, p.name
+                        ORDER BY p.level DESC, p.name
                     """)
                 positions = cur.fetchall()
-                return [dict(pos) for pos in positions]
+                
+                # For each position, get its departments
+                result = []
+                for pos in positions:
+                    pos_dict = dict(pos)
+                    # Get departments from junction table (new way)
+                    cur.execute("""
+                        SELECT d.id, d.name, d.parent_department_id,
+                               parent_d.name as parent_department_name
+                        FROM position_departments pd
+                        JOIN departments d ON pd.department_id = d.id
+                        LEFT JOIN departments parent_d ON d.parent_department_id = parent_d.id
+                        WHERE pd.position_id = %s
+                        ORDER BY 
+                            CASE WHEN d.parent_department_id IS NULL THEN 0 ELSE 1 END,
+                            parent_d.name NULLS FIRST,
+                            d.name
+                    """, (pos['id'],))
+                    dept_rows = cur.fetchall()
+                    
+                    # If no departments in junction table, check old department_id field (backward compatibility)
+                    if not dept_rows and pos.get('department_id'):
+                        cur.execute("""
+                            SELECT d.id, d.name, d.parent_department_id,
+                                   parent_d.name as parent_department_name
+                            FROM departments d
+                            LEFT JOIN departments parent_d ON d.parent_department_id = parent_d.id
+                            WHERE d.id = %s
+                        """, (pos['department_id'],))
+                        old_dept = cur.fetchone()
+                        if old_dept:
+                            dept_rows = [old_dept]
+                    
+                    # Get main department IDs
+                    main_dept_ids = [d['id'] for d in dept_rows if not d.get('parent_department_id')]
+                    
+                    # Get all sub-departments of the main departments assigned to this position
+                    sub_depts = []
+                    if main_dept_ids:
+                        cur.execute("""
+                            SELECT d.id, d.name, d.parent_department_id,
+                                   parent_d.name as parent_department_name
+                            FROM departments d
+                            LEFT JOIN departments parent_d ON d.parent_department_id = parent_d.id
+                            WHERE d.parent_department_id = ANY(%s)
+                            ORDER BY parent_d.name, d.name
+                        """, (main_dept_ids,))
+                        sub_depts = cur.fetchall()
+                    
+                    # Combine directly assigned departments with sub-departments of main departments
+                    all_dept_rows = list(dept_rows) + list(sub_depts)
+                    
+                    if pos_dict.get('applies_to_all_departments'):
+                        # Get all departments including sub-departments
+                        cur.execute("""
+                            SELECT d.id, d.name, d.parent_department_id,
+                                   parent_d.name as parent_department_name
+                            FROM departments d
+                            LEFT JOIN departments parent_d ON d.parent_department_id = parent_d.id
+                            ORDER BY 
+                                CASE WHEN d.parent_department_id IS NULL THEN 0 ELSE 1 END,
+                                parent_d.name NULLS FIRST,
+                                d.name
+                        """)
+                        all_dept_rows = cur.fetchall()
+                        pos_dict['department_names'] = ['All Departments']
+                        pos_dict['departments'] = [dict(d) for d in all_dept_rows]
+                    else:
+                        # Get all departments (main + sub) that are directly assigned OR sub-departments of assigned main departments
+                        # Include both directly assigned sub-departments and sub-departments of assigned main departments
+                        main_depts = [d for d in dept_rows if not d.get('parent_department_id')]
+                        direct_sub_depts = [d for d in dept_rows if d.get('parent_department_id')]
+                        
+                        # Combine: directly assigned departments + directly assigned sub-departments + sub-departments of main departments
+                        all_dept_rows = list(dept_rows) + list(sub_depts)
+                        # Remove duplicates based on department ID
+                        seen_ids = set()
+                        unique_depts = []
+                        for d in all_dept_rows:
+                            dept_id = d['id']
+                            if dept_id not in seen_ids:
+                                seen_ids.add(dept_id)
+                                unique_depts.append(d)
+                        
+                        pos_dict['department_names'] = [d['name'] for d in main_depts] if main_depts else [d['name'] for d in dept_rows]
+                        pos_dict['departments'] = [dict(d) for d in unique_depts]  # Include all departments and sub-departments
+                        
+                        # For backward compatibility, set first main department as primary
+                        if main_depts:
+                            pos_dict['department_name'] = main_depts[0]['name']
+                            pos_dict['department_id'] = main_depts[0]['id']
+                        elif dept_rows:
+                            # If only sub-departments, use first one
+                            pos_dict['department_name'] = dept_rows[0]['name']
+                            pos_dict['department_id'] = dept_rows[0]['id']
+                            pos_dict['parent_department_id'] = dept_rows[0].get('parent_department_id')
+                            pos_dict['parent_department_name'] = dept_rows[0].get('parent_department_name')
+                    
+                    result.append(pos_dict)
+                
+                return result
         except Exception as e:
             logger.error(f"Error fetching positions: {e}")
             raise
@@ -971,26 +1073,46 @@ class DatabaseService:
     
         conn = None
     def create_position(self, position_data: dict):
-        """Create a new position"""
+        """Create a new position with optional multiple departments"""
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                applies_to_all = position_data.get('applies_to_all_departments', False)
+                department_ids = position_data.get('department_ids', [])
+                
+                # If applies_to_all_departments is true, don't require department_id
+                department_id = None if applies_to_all else (position_data.get('department_id') or (department_ids[0] if department_ids else None))
+                
                 cur.execute("""
-                    INSERT INTO positions (id, name, description, department_id, level)
-                    VALUES (%s, %s, %s, %s, %s)
-                    RETURNING id, name, description, department_id, level, is_active, created_at, updated_at
+                    INSERT INTO positions (id, name, description, department_id, level, applies_to_all_departments)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    RETURNING id, name, description, department_id, level, is_active, applies_to_all_departments, created_at, updated_at
                 """, (
                     str(uuid.uuid4()),
                     position_data['name'],
                     position_data.get('description', ''),
-                    position_data['department_id'],
-                    position_data.get('level', 1)
+                    department_id,
+                    position_data.get('level', 1),
+                    applies_to_all
                 ))
                 new_position = cur.fetchone()
+                position_id = new_position['id']
+                
+                # Add departments to junction table if not applies_to_all
+                if not applies_to_all and department_ids:
+                    for dept_id in department_ids:
+                        cur.execute("""
+                            INSERT INTO position_departments (position_id, department_id)
+                            VALUES (%s, %s)
+                            ON CONFLICT (position_id, department_id) DO NOTHING
+                        """, (position_id, dept_id))
+                
                 conn.commit()
                 return dict(new_position)
         except Exception as e:
             logger.error(f"Error creating position: {e}")
+            if conn:
+                conn.rollback()
             raise
         finally:
             if conn:
@@ -998,35 +1120,60 @@ class DatabaseService:
     
         conn = None
     def update_position(self, position_id: str, position_data: dict):
-        """Update a position"""
+        """Update a position and its department associations"""
         try:
             conn = self.get_connection()
-            set_clauses = []
-            values = []
-            
-            for key, value in position_data.items():
-                if key in ['name', 'description', 'level'] and value is not None:
-                    set_clauses.append(f"{key} = %s")
-                    values.append(value)
-            
-            if not set_clauses:
-                return False
-            
-            set_clauses.append("updated_at = CURRENT_TIMESTAMP")
-            values.append(position_id)
-            
-            query = f"""
-                UPDATE positions 
-                SET {', '.join(set_clauses)}
-                WHERE id = %s
-            """
-            
-            with conn.cursor() as cur:
-                cur.execute(query, values)
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                set_clauses = []
+                values = []
+                
+                # Update position fields
+                for key, value in position_data.items():
+                    if key in ['name', 'description', 'level', 'applies_to_all_departments'] and value is not None:
+                        set_clauses.append(f"{key} = %s")
+                        values.append(value)
+                
+                # Handle department updates
+                applies_to_all = position_data.get('applies_to_all_departments', False)
+                department_ids = position_data.get('department_ids', [])
+                
+                if 'department_ids' in position_data or 'applies_to_all_departments' in position_data:
+                    # Delete existing department associations
+                    cur.execute("DELETE FROM position_departments WHERE position_id = %s", (position_id,))
+                    
+                    # Add new department associations if not applies_to_all
+                    if not applies_to_all and department_ids:
+                        for dept_id in department_ids:
+                            cur.execute("""
+                                INSERT INTO position_departments (position_id, department_id)
+                                VALUES (%s, %s)
+                                ON CONFLICT (position_id, department_id) DO NOTHING
+                            """, (position_id, dept_id))
+                    
+                    # Update department_id for backward compatibility
+                    if not applies_to_all and department_ids:
+                        set_clauses.append("department_id = %s")
+                        values.append(department_ids[0])
+                    elif applies_to_all:
+                        set_clauses.append("department_id = NULL")
+                
+                if set_clauses:
+                    set_clauses.append("updated_at = CURRENT_TIMESTAMP")
+                    values.append(position_id)
+                    
+                    query = f"""
+                        UPDATE positions 
+                        SET {', '.join(set_clauses)}
+                        WHERE id = %s
+                    """
+                    cur.execute(query, values)
+                
                 conn.commit()
-                return cur.rowcount > 0
+                return True
         except Exception as e:
             logger.error(f"Error updating position: {e}")
+            if conn:
+                conn.rollback()
             raise
         finally:
             if conn:

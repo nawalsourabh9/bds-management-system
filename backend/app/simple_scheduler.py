@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any
 import httpx
-from app.core.config import settings
+from app.core.config import settings, mask_sensitive_info
 from app.database_service import db_service
 
 logger = logging.getLogger(__name__)
@@ -57,7 +57,9 @@ class SimpleScheduler:
                 await asyncio.sleep(300)
                 
             except Exception as e:
-                logger.error(f"Error running scheduled tasks: {e}")
+                # Mask sensitive information in error messages
+                error_msg = mask_sensitive_info(str(e))
+                logger.error(f"Error running scheduled tasks: {error_msg}")
                 await asyncio.sleep(60)  # Wait 1 minute before retry
 
 # Global scheduler instance

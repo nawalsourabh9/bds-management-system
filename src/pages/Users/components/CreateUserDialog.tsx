@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
@@ -45,7 +45,7 @@ interface User {
 const createUserSchema = z.object({
   employeeId: z.string().min(1, { message: "Employee ID is required." }),
   name: z.string().min(1, { message: "Name is required." }),
-  email: z.string().email({ message: "Invalid email address." }),
+  email: z.string().email({ message: "Invalid email address." }).optional().or(z.literal('')),
   role: z.string().min(1, { message: "Role is required." }),
   department: z.string().min(1, { message: "Department is required." }),
   subDepartment: z.string().optional(),
@@ -141,6 +141,8 @@ export const CreateUserDialog = ({ isOpen, setIsOpen, onUserCreated }: CreateUse
 
   const fetchPositions = async (departmentId: string) => {
     try {
+      // Fetch positions for the selected department
+      // Positions that apply to this department (via many-to-many or all departments)
       const response = await fastapiService.getPositions(departmentId);
       setPositions(response.positions || []);
     } catch (error) {
@@ -163,19 +165,19 @@ export const CreateUserDialog = ({ isOpen, setIsOpen, onUserCreated }: CreateUse
     setLoading(true);
 
     try {
-      // Split name: first word is first_name, rest is last_name
+      // Split name: first word is first_name, rest is last_name (can be empty)
       const nameParts = values.name.trim().split(' ');
       const firstName = nameParts[0] || '';
-      const lastName = nameParts.slice(1).join(' ') || '';
+      const lastName = nameParts.slice(1).join(' ') || null; // null if empty
       
       // Use sub-department ID if selected, otherwise use main department ID
       const finalDepartmentId = values.subDepartment || values.department;
       
       const response = await fastapiService.createUser({
         employee_id: values.employeeId,
-        email: values.email,
+        email: values.email && values.email.trim() ? values.email.trim() : undefined, // Optional email
         first_name: firstName,
-        last_name: lastName,
+        last_name: lastName || undefined, // Send undefined if null to allow backend to handle NULL
         role: values.role,
         department_id: finalDepartmentId || null,
         position_id: values.position || null,
@@ -185,7 +187,10 @@ export const CreateUserDialog = ({ isOpen, setIsOpen, onUserCreated }: CreateUse
 
       // Show credentials dialog if password was returned
       if (response.password) {
-        setCredentials({ email: values.email, password: response.password });
+        setCredentials({ 
+          email: values.email && values.email.trim() ? values.email.trim() : values.employeeId, // Use employee ID if no email
+          password: response.password 
+        });
         setShowCredentials(true);
         setIsOpen(false); // Close create dialog
       } else {
@@ -250,10 +255,13 @@ export const CreateUserDialog = ({ isOpen, setIsOpen, onUserCreated }: CreateUse
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email</FormLabel>
+                    <FormLabel>Email (Optional)</FormLabel>
                     <FormControl>
-                      <Input type="email" {...field} />
+                      <Input type="email" placeholder="user@example.com" {...field} />
                     </FormControl>
+                    <FormDescription className="text-xs text-gray-500">
+                      Optional - Login uses Employee ID
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -432,7 +440,9 @@ export const CreateUserDialog = ({ isOpen, setIsOpen, onUserCreated }: CreateUse
 
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Email</Label>
+              <Label className="text-sm font-medium">
+                {credentials?.email && credentials.email.includes('@') ? 'Email' : 'Employee ID'}
+              </Label>
               <div className="flex gap-2">
                 <Input
                   value={credentials?.email || ''}

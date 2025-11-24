@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { Plus, Edit, Trash, Building2 } from "lucide-react";
 import { fastapiService } from "@/services/fastapi-service";
@@ -16,6 +17,7 @@ interface Position {
   department_name?: string;
   parent_department_id?: string;
   parent_department_name?: string;
+  sub_department_name?: string; // Name of the sub-department if position belongs to one
   level: number;
   is_active: boolean;
   created_at: string;
@@ -38,6 +40,8 @@ export const PositionsPage = () => {
     name: "",
     description: "",
     department_id: "",
+    department_ids: [] as string[],
+    applies_to_all_departments: false,
     level: 1
   });
 
@@ -71,17 +75,23 @@ export const PositionsPage = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const submitData = {
+        ...formData,
+        department_ids: formData.applies_to_all_departments ? [] : formData.department_ids
+      };
+      
       if (editingPosition) {
-        await fastapiService.updatePosition(editingPosition.id, formData);
+        await fastapiService.updatePosition(editingPosition.id, submitData);
         toast.success("Position updated successfully");
       } else {
-        await fastapiService.createPosition(formData);
+        await fastapiService.createPosition(submitData);
         toast.success("Position created successfully");
       }
       setIsCreateOpen(false);
       setIsEditOpen(false);
       setEditingPosition(null);
-      setFormData({ name: "", description: "", department_id: "", level: 1 });
+      // Reset form to empty fields
+      setFormData({ name: "", description: "", department_id: "", department_ids: [], applies_to_all_departments: false, level: 1 });
       fetchPositions();
     } catch (error: any) {
       console.error("Error saving position:", error);
@@ -91,10 +101,14 @@ export const PositionsPage = () => {
 
   const handleEdit = (position: Position) => {
     setEditingPosition(position);
+    const deptIds = (position as any).departments?.map((d: any) => d.id) || 
+                    (position.department_id ? [position.department_id] : []);
     setFormData({
       name: position.name,
       description: position.description || "",
-      department_id: position.department_id,
+      department_id: position.department_id || "",
+      department_ids: deptIds,
+      applies_to_all_departments: (position as any).applies_to_all_departments || false,
       level: position.level
     });
     setIsEditOpen(true);
@@ -152,6 +166,7 @@ export const PositionsPage = () => {
               <tr className="border-b bg-gray-50">
                 <th className="text-left p-4 font-medium">Position Name</th>
                 <th className="text-left p-4 font-medium">Department</th>
+                <th className="text-left p-4 font-medium">Sub-Department</th>
                 <th className="text-left p-4 font-medium">Level</th>
                 <th className="text-left p-4 font-medium">Description</th>
                 <th className="text-left p-4 font-medium">Status</th>
@@ -163,9 +178,49 @@ export const PositionsPage = () => {
                 <tr key={position.id} className="border-b hover:bg-gray-50">
                   <td className="p-4 font-medium">{position.name}</td>
                   <td className="p-4">
-                    {position.parent_department_name 
-                      ? `${position.department_name} (${position.parent_department_name})` 
-                      : position.department_name || 'No Department'
+                    {(position as any).applies_to_all_departments 
+                      ? <span className="font-semibold text-blue-600">All Departments</span>
+                      : (() => {
+                          const depts = (position as any).departments || [];
+                          const mainDepts = depts.filter((d: any) => !d.parent_department_id);
+                          if (mainDepts.length > 0) {
+                            return mainDepts.map((d: any) => d.name).join(', ');
+                          }
+                          // Fallback to old format if departments array not available
+                          return position.parent_department_name || position.department_name || 'No Department';
+                        })()
+                    }
+                  </td>
+                  <td className="p-4">
+                    {(position as any).applies_to_all_departments 
+                      ? <span className="text-gray-400">-</span>
+                      : (() => {
+                          const depts = (position as any).departments || [];
+                          const subDepts = depts.filter((d: any) => d.parent_department_id);
+                          
+                          if (subDepts.length > 0) {
+                            // Group sub-departments by parent department for better readability
+                            const grouped: Record<string, string[]> = {};
+                            subDepts.forEach((sub: any) => {
+                              const parentName = sub.parent_department_name || 'Unknown';
+                              if (!grouped[parentName]) {
+                                grouped[parentName] = [];
+                              }
+                              grouped[parentName].push(sub.name);
+                            });
+                            
+                            // If only one parent, show simple list; otherwise group by parent
+                            if (Object.keys(grouped).length === 1) {
+                              return subDepts.map((d: any) => d.name).join(', ');
+                            } else {
+                              // Format: "Parent1: Sub1, Sub2 | Parent2: Sub3"
+                              return Object.entries(grouped)
+                                .map(([parent, subs]) => `${parent}: ${subs.join(', ')}`)
+                                .join(' | ');
+                            }
+                          }
+                          return <span className="text-gray-400">-</span>;
+                        })()
                     }
                   </td>
                   <td className="p-4">
@@ -210,7 +265,7 @@ export const PositionsPage = () => {
 
       {/* Create Position Dialog */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>Create New Position</DialogTitle>
           </DialogHeader>
@@ -236,20 +291,85 @@ export const PositionsPage = () => {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="department">Department</Label>
-              <Select value={formData.department_id} onValueChange={(value) => setFormData({ ...formData, department_id: value })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select department" />
-                </SelectTrigger>
-                <SelectContent>
-                  {departments.map((dept) => (
-                    <SelectItem key={dept.id} value={dept.id}>
-                      {dept.parent_department_name ? `${dept.name} (${dept.parent_department_name})` : dept.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="all-departments"
+                  checked={formData.applies_to_all_departments}
+                  onCheckedChange={(checked) => {
+                    setFormData({
+                      ...formData,
+                      applies_to_all_departments: checked as boolean,
+                      department_ids: checked ? [] : []
+                    });
+                  }}
+                />
+                <Label htmlFor="all-departments" className="cursor-pointer">
+                  Applies to All Departments (e.g., CTO, CEO)
+                </Label>
+              </div>
+              
+              {!formData.applies_to_all_departments && (
+                <div className="space-y-2">
+                  <Label htmlFor="departments">Select Departments</Label>
+                  <div className="max-h-48 overflow-y-auto border rounded-md p-3">
+                    {departments.filter(d => !d.parent_department_name).map((dept) => (
+                      <div key={dept.id} className="mb-2">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <Checkbox
+                            id={`dept-${dept.id}`}
+                            checked={formData.department_ids.includes(dept.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setFormData({
+                                  ...formData,
+                                  department_ids: [...formData.department_ids, dept.id]
+                                });
+                              } else {
+                                setFormData({
+                                  ...formData,
+                                  department_ids: formData.department_ids.filter(id => id !== dept.id)
+                                });
+                              }
+                            }}
+                          />
+                          <Label htmlFor={`dept-${dept.id}`} className="cursor-pointer font-medium">
+                            {dept.name}
+                          </Label>
+                        </div>
+                        {/* Show sub-departments */}
+                        {departments.filter(sd => sd.parent_department_name === dept.name).map((subDept) => (
+                          <div key={subDept.id} className="ml-6 flex items-center space-x-2">
+                            <Checkbox
+                              id={`subdept-${subDept.id}`}
+                              checked={formData.department_ids.includes(subDept.id)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setFormData({
+                                    ...formData,
+                                    department_ids: [...formData.department_ids, subDept.id]
+                                  });
+                                } else {
+                                  setFormData({
+                                    ...formData,
+                                    department_ids: formData.department_ids.filter(id => id !== subDept.id)
+                                  });
+                                }
+                              }}
+                            />
+                            <Label htmlFor={`subdept-${subDept.id}`} className="cursor-pointer text-sm text-gray-600">
+                              {subDept.name}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                  {formData.department_ids.length === 0 && (
+                    <p className="text-sm text-amber-600">Please select at least one department</p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -269,7 +389,10 @@ export const PositionsPage = () => {
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
+              <Button type="button" variant="outline" onClick={() => {
+                setIsCreateOpen(false);
+                setFormData({ name: "", description: "", department_id: "", department_ids: [], applies_to_all_departments: false, level: 1 });
+              }}>
                 Cancel
               </Button>
               <Button type="submit">Create Position</Button>
@@ -280,7 +403,7 @@ export const PositionsPage = () => {
 
       {/* Edit Position Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>Edit Position</DialogTitle>
           </DialogHeader>
@@ -306,20 +429,85 @@ export const PositionsPage = () => {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="edit_department">Department</Label>
-              <Select value={formData.department_id} onValueChange={(value) => setFormData({ ...formData, department_id: value })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select department" />
-                </SelectTrigger>
-                <SelectContent>
-                  {departments.map((dept) => (
-                    <SelectItem key={dept.id} value={dept.id}>
-                      {dept.parent_department_name ? `${dept.name} (${dept.parent_department_name})` : dept.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="edit-all-departments"
+                  checked={formData.applies_to_all_departments}
+                  onCheckedChange={(checked) => {
+                    setFormData({
+                      ...formData,
+                      applies_to_all_departments: checked as boolean,
+                      department_ids: checked ? [] : formData.department_ids
+                    });
+                  }}
+                />
+                <Label htmlFor="edit-all-departments" className="cursor-pointer">
+                  Applies to All Departments (e.g., CTO, CEO)
+                </Label>
+              </div>
+              
+              {!formData.applies_to_all_departments && (
+                <div className="space-y-2">
+                  <Label htmlFor="edit_departments">Select Departments</Label>
+                  <div className="max-h-48 overflow-y-auto border rounded-md p-3">
+                    {departments.filter(d => !d.parent_department_name).map((dept) => (
+                      <div key={dept.id} className="mb-2">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <Checkbox
+                            id={`edit-dept-${dept.id}`}
+                            checked={formData.department_ids.includes(dept.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setFormData({
+                                  ...formData,
+                                  department_ids: [...formData.department_ids, dept.id]
+                                });
+                              } else {
+                                setFormData({
+                                  ...formData,
+                                  department_ids: formData.department_ids.filter(id => id !== dept.id)
+                                });
+                              }
+                            }}
+                          />
+                          <Label htmlFor={`edit-dept-${dept.id}`} className="cursor-pointer font-medium">
+                            {dept.name}
+                          </Label>
+                        </div>
+                        {/* Show sub-departments */}
+                        {departments.filter(sd => sd.parent_department_name === dept.name).map((subDept) => (
+                          <div key={subDept.id} className="ml-6 flex items-center space-x-2">
+                            <Checkbox
+                              id={`edit-subdept-${subDept.id}`}
+                              checked={formData.department_ids.includes(subDept.id)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setFormData({
+                                    ...formData,
+                                    department_ids: [...formData.department_ids, subDept.id]
+                                  });
+                                } else {
+                                  setFormData({
+                                    ...formData,
+                                    department_ids: formData.department_ids.filter(id => id !== subDept.id)
+                                  });
+                                }
+                              }}
+                            />
+                            <Label htmlFor={`edit-subdept-${subDept.id}`} className="cursor-pointer text-sm text-gray-600">
+                              {subDept.name}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                  {formData.department_ids.length === 0 && (
+                    <p className="text-sm text-amber-600">Please select at least one department</p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -339,7 +527,10 @@ export const PositionsPage = () => {
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsEditOpen(false)}>
+              <Button type="button" variant="outline" onClick={() => {
+                setIsEditOpen(false);
+                setEditingPosition(null);
+              }}>
                 Cancel
               </Button>
               <Button type="submit">Update Position</Button>

@@ -1,8 +1,27 @@
 from pydantic_settings import BaseSettings
 from typing import List, Optional
 from urllib.parse import quote_plus
+import re
 
 import os
+
+def mask_sensitive_info(error_msg: str) -> str:
+    """Mask sensitive information (passwords, connection strings) from error messages"""
+    if not error_msg:
+        return error_msg
+    
+    # Check if error contains sensitive information
+    if 'password' in error_msg.lower() or '@' in error_msg or '://' in error_msg:
+        # Extract only the error type, not connection details
+        error_parts = error_msg.split(':')
+        if len(error_parts) > 1:
+            return f"{error_parts[0]}: [Database error - details masked for security]"
+        
+        # If no colon, try to extract just the error type
+        if 'invalid' in error_msg.lower():
+            return "[Database connection error - details masked for security]"
+    
+    return error_msg
 
 class Settings(BaseSettings):
     # Basic settings
@@ -63,12 +82,13 @@ class Settings(BaseSettings):
         if not db_sslmode:
             db_sslmode = self.DB_SSLMODE
         
-        # Log the values being used (without password)
+        # Log the values being used (without password for security)
         logger.info(f"Constructing DATABASE_URL from components - DB_HOST: {db_host}, DB_USER: {db_user}, DB_NAME: {db_name}, DB_SSLMODE: {db_sslmode}")
         
-        # URL encode password to handle special characters
+        # URL encode both username and password to handle special characters (like @ in Azure usernames)
+        encoded_user = quote_plus(db_user)
         encoded_password = quote_plus(db_password)
-        db_url = f"postgresql://{db_user}:{encoded_password}@{db_host}:{db_port}/{db_name}?sslmode={db_sslmode}"
+        db_url = f"postgresql://{encoded_user}:{encoded_password}@{db_host}:{db_port}/{db_name}?sslmode={db_sslmode}"
         return db_url
     
     # Redis

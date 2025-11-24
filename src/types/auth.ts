@@ -2,14 +2,14 @@
 export type ApprovalRecord = {
   id: string;
   user_id: string;
-  email: string;
+  email: string | null; // Email is now optional
   status: string;
   created_at: string;
 };
 
 export type EmployeeData = {
   id: string;
-  email: string;
+  email: string | null; // Email is now optional
   name: string;
   employee_id: string;
   department: string;
