@@ -88,9 +88,9 @@ class DatabaseService:
             if conn:
                 conn.close()
 
-        conn = None
     def get_notifications_by_user(self, user_id: str, limit: int = 50):
         """Get notifications for a specific user"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -164,8 +164,6 @@ class DatabaseService:
             if conn:
                 conn.close()
     
-        conn = None
-    
     def create_audit_log(self, user_id: str, action: str, table_name: str = None, record_id: str = None, 
                          old_values: dict = None, new_values: dict = None, ip_address: str = None, 
                          user_agent: str = None):
@@ -223,9 +221,9 @@ class DatabaseService:
             if conn:
                 conn.close()
     
-        conn = None
     def get_users(self):
         """Get all active users with department and position information"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -358,9 +356,9 @@ class DatabaseService:
             if conn:
                 conn.close()
     
-        conn = None
     def get_tasks(self):
         """Get all tasks with department names and employee information"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -411,9 +409,9 @@ class DatabaseService:
             if conn:
                 conn.close()
 
-        conn = None
     def get_task_by_id(self, task_id: str):
         """Get a specific task by ID with department names and employee information"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -462,9 +460,9 @@ class DatabaseService:
             if conn:
                 conn.close()
     
-        conn = None
     def get_departments(self):
         """Get all departments with parent department information and positions"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -499,9 +497,9 @@ class DatabaseService:
             if conn:
                 conn.close()
     
-        conn = None
     def get_department_id_by_name(self, department_name):
         """Get department ID by name"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -515,9 +513,9 @@ class DatabaseService:
             if conn:
                 conn.close()
     
-        conn = None
     def get_department_by_id(self, department_id: str):
         """Get department by ID"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -570,9 +568,9 @@ class DatabaseService:
             if conn:
                 conn.close()
     
-        conn = None
     def get_department_by_name(self, department_name: str):
         """Get department by name"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -591,9 +589,9 @@ class DatabaseService:
             if conn:
                 conn.close()
     
-        conn = None
     def update_department(self, department_id: str, department_data: dict):
         """Update a department"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -629,9 +627,9 @@ class DatabaseService:
             if conn:
                 conn.close()
     
-        conn = None
     def delete_department(self, department_id: str):
         """Delete a department"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -645,9 +643,9 @@ class DatabaseService:
             if conn:
                 conn.close()
     
-        conn = None
     def create_task(self, task_data):
         """Create a new task"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -692,9 +690,9 @@ class DatabaseService:
             if conn:
                 conn.close()
     
-        conn = None
     def update_task(self, task_id, task_data):
         """Update a task"""
+        conn = None
         try:
             logger.info(f"Starting update_task for {task_id} with data: {task_data}")
             conn = self.get_connection()
@@ -748,10 +746,10 @@ class DatabaseService:
         finally:
             if conn:
                 conn.close()
-    
-        conn = None
+
     def delete_task(self, task_id):
         """Delete a task"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor() as cur:
@@ -767,9 +765,9 @@ class DatabaseService:
             if conn:
                 conn.close()
 
-        conn = None
     def get_user_by_id(self, user_id: str):
         """Get a user by ID"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -792,9 +790,9 @@ class DatabaseService:
             if conn:
                 conn.close()
 
-        conn = None
     def update_user(self, user_id: str, user_data: dict):
         """Update a user"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -830,9 +828,9 @@ class DatabaseService:
             if conn:
                 conn.close()
 
-        conn = None
     def delete_user(self, user_id: str):
         """Delete a user"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor() as cur:
@@ -848,9 +846,9 @@ class DatabaseService:
             if conn:
                 conn.close()
 
-        conn = None
     def create_otp_code(self, otp_data: dict):
         """Create OTP code"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor() as cur:
@@ -873,9 +871,9 @@ class DatabaseService:
             if conn:
                 conn.close()
 
-        conn = None
     def get_otp_code(self, email: str):
         """Get OTP code for email"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -893,9 +891,9 @@ class DatabaseService:
             if conn:
                 conn.close()
 
-        conn = None
     def update_otp_code(self, email: str, otp_data: dict):
         """Update OTP code"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor() as cur:
@@ -916,9 +914,9 @@ class DatabaseService:
                 conn.close()
     
     # Position Management Methods
-        conn = None
     def get_positions(self, department_id: str = None):
         """Get all positions, optionally filtered by department"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1050,20 +1048,66 @@ class DatabaseService:
             if conn:
                 conn.close()
     
-        conn = None
     def get_position_by_id(self, position_id: str):
-        """Get a specific position by ID"""
+        """Get a specific position by ID with department information"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Get position basic info
                 cur.execute("""
-                    SELECT p.*, d.name as department_name
+                    SELECT p.*
                     FROM positions p
-                    JOIN departments d ON p.department_id = d.id
                     WHERE p.id = %s
                 """, (position_id,))
                 position = cur.fetchone()
-                return dict(position) if position else None
+                
+                if not position:
+                    return None
+                
+                pos_dict = dict(position)
+                
+                # Get departments for this position
+                if pos_dict.get('applies_to_all_departments'):
+                    # Get all departments
+                    cur.execute("""
+                        SELECT d.id, d.name, d.parent_department_id,
+                               parent_d.name as parent_department_name
+                        FROM departments d
+                        LEFT JOIN departments parent_d ON d.parent_department_id = parent_d.id
+                        ORDER BY d.name
+                    """)
+                    dept_rows = cur.fetchall()
+                    pos_dict['departments'] = [dict(d) for d in dept_rows]
+                else:
+                    # Get departments from junction table
+                    cur.execute("""
+                        SELECT d.id, d.name, d.parent_department_id,
+                               parent_d.name as parent_department_name
+                        FROM position_departments pd
+                        JOIN departments d ON pd.department_id = d.id
+                        LEFT JOIN departments parent_d ON d.parent_department_id = parent_d.id
+                        WHERE pd.position_id = %s
+                        ORDER BY d.name
+                    """, (position_id,))
+                    dept_rows = cur.fetchall()
+                    
+                    # If no departments in junction table, check old department_id field
+                    if not dept_rows and pos_dict.get('department_id'):
+                        cur.execute("""
+                            SELECT d.id, d.name, d.parent_department_id,
+                                   parent_d.name as parent_department_name
+                            FROM departments d
+                            LEFT JOIN departments parent_d ON d.parent_department_id = parent_d.id
+                            WHERE d.id = %s
+                        """, (pos_dict['department_id'],))
+                        old_dept = cur.fetchone()
+                        if old_dept:
+                            dept_rows = [old_dept]
+                    
+                    pos_dict['departments'] = [dict(d) for d in dept_rows]
+                
+                return pos_dict
         except Exception as e:
             logger.error(f"Error fetching position: {e}")
             raise
@@ -1071,9 +1115,9 @@ class DatabaseService:
             if conn:
                 conn.close()
     
-        conn = None
     def create_position(self, position_data: dict):
         """Create a new position with optional multiple departments"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1118,9 +1162,9 @@ class DatabaseService:
             if conn:
                 conn.close()
     
-        conn = None
     def update_position(self, position_id: str, position_data: dict):
         """Update a position and its department associations"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1179,9 +1223,9 @@ class DatabaseService:
             if conn:
                 conn.close()
     
-        conn = None
     def delete_position(self, position_id: str):
         """Delete a position"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor() as cur:
@@ -1196,9 +1240,9 @@ class DatabaseService:
                 conn.close()
     
     # Hierarchy Management Methods
-        conn = None
     def get_user_hierarchy(self, user_id: str):
         """Get the reporting hierarchy for a user"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1212,9 +1256,9 @@ class DatabaseService:
             if conn:
                 conn.close()
     
-        conn = None
     def get_users_by_reporting_level(self, user_id: str):
         """Get users that the current user can manage based on hierarchy"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1228,9 +1272,9 @@ class DatabaseService:
             if conn:
                 conn.close()
     
-        conn = None
     def get_department_hierarchy(self, department_id: str):
         """Get the department hierarchy including sub-departments"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1244,9 +1288,9 @@ class DatabaseService:
             if conn:
                 conn.close()
     
-        conn = None
     def get_sub_departments(self, parent_department_id: str):
         """Get all sub-departments of a parent department"""
+        conn = None
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1266,6 +1310,317 @@ class DatabaseService:
         finally:
             if conn:
                 conn.close()
+    
+        conn = None
+    
+    def get_department_activities(self, department_ids: list, limit: int = 100):
+        """Get all activities (notifications and audit logs) for given departments"""
+        conn = None
+        try:
+            import json
+            from datetime import datetime
+            conn = self.get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                activities = []
+                
+                # Get notifications for users in these departments
+                cur.execute("""
+                    SELECT 
+                        n.id,
+                        n.title,
+                        n.message,
+                        n.type,
+                        n.is_read,
+                        n.created_at,
+                        n.task_id,
+                        u.id as user_id,
+                        u.first_name,
+                        u.last_name,
+                        u.employee_id,
+                        u.department_id,
+                        d.name as department_name,
+                        'notification' as activity_type
+                    FROM notifications n
+                    JOIN users u ON n.user_id = u.id
+                    LEFT JOIN departments d ON u.department_id = d.id
+                    WHERE u.department_id = ANY(%s)
+                    ORDER BY n.created_at DESC
+                    LIMIT %s
+                """, (department_ids, limit))
+                
+                notifications = cur.fetchall()
+                for notif in notifications:
+                    activities.append({
+                        'id': str(notif['id']),
+                        'type': 'notification',
+                        'title': notif['title'],
+                        'message': notif['message'],
+                        'notification_type': notif['type'],
+                        'is_read': notif['is_read'],
+                        'created_at': notif['created_at'].isoformat() if isinstance(notif['created_at'], datetime) else str(notif['created_at']),
+                        'user': {
+                            'id': str(notif['user_id']),
+                            'first_name': notif['first_name'],
+                            'last_name': notif['last_name'],
+                            'employee_id': notif['employee_id'],
+                            'department_id': str(notif['department_id']) if notif['department_id'] else None,
+                            'department_name': notif['department_name']
+                        },
+                        'task_id': str(notif['task_id']) if notif['task_id'] else None
+                    })
+                
+                # Get audit logs related to these departments with detailed task and user info
+                cur.execute("""
+                    SELECT 
+                        al.id,
+                        al.action,
+                        al.table_name,
+                        al.record_id,
+                        al.old_values,
+                        al.new_values,
+                        al.created_at,
+                        u.id as user_id,
+                        u.first_name,
+                        u.last_name,
+                        u.employee_id,
+                        u.department_id,
+                        d.name as department_name,
+                        -- Task details if this is a task action
+                        CASE WHEN al.table_name = 'tasks' THEN
+                            json_build_object(
+                                'id', t.id,
+                                'title', t.title,
+                                'status', t.status,
+                                'priority', t.priority,
+                                'due_date', t.due_date,
+                                'assignee_id', t.assignee_id,
+                                'accountable_id', t.accountable_id,
+                                'department_id', t.department_id,
+                                'assignee_name', CONCAT(assignee_u.first_name, ' ', assignee_u.last_name),
+                                'accountable_name', CONCAT(accountable_u.first_name, ' ', accountable_u.last_name)
+                            )
+                        ELSE NULL END as task_details,
+                        -- User details if this is a user action
+                        CASE WHEN al.table_name = 'users' THEN
+                            json_build_object(
+                                'id', target_u.id,
+                                'first_name', target_u.first_name,
+                                'last_name', target_u.last_name,
+                                'employee_id', target_u.employee_id,
+                                'email', target_u.email,
+                                'position_id', target_u.position_id,
+                                'position_name', pos.name,
+                                'department_id', target_u.department_id,
+                                'department_name', target_d.name
+                            )
+                        ELSE NULL END as target_user_details
+                    FROM audit_logs al
+                    JOIN users u ON al.user_id = u.id
+                    LEFT JOIN departments d ON u.department_id = d.id
+                    LEFT JOIN tasks t ON al.table_name = 'tasks' AND t.id::text = al.record_id::text
+                    LEFT JOIN users assignee_u ON t.assignee_id = assignee_u.id
+                    LEFT JOIN users accountable_u ON t.accountable_id = accountable_u.id
+                    LEFT JOIN users target_u ON al.table_name = 'users' AND target_u.id::text = al.record_id::text
+                    LEFT JOIN departments target_d ON target_u.department_id = target_d.id
+                    LEFT JOIN positions pos ON target_u.position_id = pos.id
+                    WHERE (
+                        -- User actions in these departments
+                        (al.table_name = 'users' AND target_u.department_id = ANY(%s))
+                        OR
+                        -- Task actions for tasks in these departments
+                        (al.table_name = 'tasks' AND t.department_id = ANY(%s))
+                        OR
+                        -- Department actions for these departments
+                        (al.table_name = 'departments' AND al.record_id::text = ANY(%s))
+                        OR
+                        -- Position actions for positions in these departments
+                        (al.table_name = 'positions' AND EXISTS (
+                            SELECT 1 FROM positions p
+                            LEFT JOIN position_departments pd ON p.id = pd.position_id
+                            WHERE p.id::text = al.record_id::text
+                            AND (pd.department_id = ANY(%s) OR p.department_id = ANY(%s))
+                        ))
+                    )
+                    ORDER BY al.created_at DESC
+                    LIMIT %s
+                """, (department_ids, department_ids, [str(did) for did in department_ids], department_ids, department_ids, limit))
+                
+                audit_logs = cur.fetchall()
+                for log in audit_logs:
+                    old_vals = json.loads(log['old_values']) if log['old_values'] else {}
+                    new_vals = json.loads(log['new_values']) if log['new_values'] else {}
+                    
+                    # Get task details if available
+                    task_details = None
+                    if log['task_details']:
+                        task_details = log['task_details']
+                    
+                    # Get target user details if available
+                    target_user_details = None
+                    if log['target_user_details']:
+                        target_user_details = log['target_user_details']
+                    
+                    # Format action message based on table and action
+                    action_message = self._format_audit_action(
+                        log['action'],
+                        log['table_name'],
+                        old_vals,
+                        new_vals,
+                        task_details,
+                        target_user_details
+                    )
+                    
+                    activity = {
+                        'id': str(log['id']),
+                        'type': 'audit',
+                        'action': log['action'],
+                        'table_name': log['table_name'],
+                        'record_id': str(log['record_id']) if log['record_id'] else None,
+                        'message': action_message,
+                        'old_values': old_vals,
+                        'new_values': new_vals,
+                        'created_at': log['created_at'].isoformat() if isinstance(log['created_at'], datetime) else str(log['created_at']),
+                        'user': {
+                            'id': str(log['user_id']),
+                            'first_name': log['first_name'],
+                            'last_name': log['last_name'],
+                            'employee_id': log['employee_id'],
+                            'department_id': str(log['department_id']) if log['department_id'] else None,
+                            'department_name': log['department_name']
+                        }
+                    }
+                    
+                    # Add task details if available
+                    if task_details:
+                        activity['task'] = {
+                            'id': str(task_details['id']) if task_details.get('id') else None,
+                            'title': task_details.get('title'),
+                            'status': task_details.get('status'),
+                            'priority': task_details.get('priority'),
+                            'due_date': task_details['due_date'].isoformat() if task_details.get('due_date') and isinstance(task_details['due_date'], datetime) else (str(task_details['due_date']) if task_details.get('due_date') else None),
+                            'assignee_name': task_details.get('assignee_name'),
+                            'accountable_name': task_details.get('accountable_name')
+                        }
+                    
+                    # Add target user details if available
+                    if target_user_details:
+                        activity['target_user'] = {
+                            'id': str(target_user_details['id']) if target_user_details.get('id') else None,
+                            'first_name': target_user_details.get('first_name'),
+                            'last_name': target_user_details.get('last_name'),
+                            'employee_id': target_user_details.get('employee_id'),
+                            'email': target_user_details.get('email'),
+                            'position_name': target_user_details.get('position_name'),
+                            'department_name': target_user_details.get('department_name')
+                        }
+                    
+                    activities.append(activity)
+                
+                # Sort all activities by created_at descending
+                activities.sort(key=lambda x: x['created_at'], reverse=True)
+                
+                return activities[:limit]
+        except Exception as e:
+            logger.error(f"Error fetching department activities: {e}", exc_info=True)
+            raise
+        finally:
+            if conn:
+                conn.close()
+    
+    def _format_audit_action(self, action: str, table_name: str, old_values: dict, new_values: dict, task_details: dict = None, target_user_details: dict = None) -> str:
+        """Format audit log action into a human-readable message"""
+        action_lower = action.lower()
+        table_lower = table_name.lower() if table_name else ''
+        
+        if action_lower == 'create' or action_lower == 'insert':
+            if table_lower == 'users':
+                if target_user_details:
+                    name = f"{target_user_details.get('first_name', '')} {target_user_details.get('last_name', '')}".strip()
+                    employee_id = target_user_details.get('employee_id', '')
+                    position = target_user_details.get('position_name', '')
+                    dept = target_user_details.get('department_name', '')
+                    details = []
+                    if employee_id:
+                        details.append(f"ID: {employee_id}")
+                    if position:
+                        details.append(f"Position: {position}")
+                    if dept:
+                        details.append(f"Department: {dept}")
+                    detail_str = f" ({', '.join(details)})" if details else ""
+                    return f"Your department welcoming new user: {name or 'User'}{detail_str}"
+                else:
+                    name = new_values.get('first_name', '') + ' ' + new_values.get('last_name', '')
+                    return f"New user created: {name.strip() or 'User'}"
+            elif table_lower == 'tasks':
+                if task_details:
+                    title = task_details.get('title', new_values.get('title', 'Task'))
+                    status = task_details.get('status', 'not-started')
+                    priority = task_details.get('priority', 'medium')
+                    due_date = task_details.get('due_date')
+                    assignee = task_details.get('assignee_name', '')
+                    accountable = task_details.get('accountable_name', '')
+                    
+                    details = []
+                    if due_date:
+                        from datetime import datetime
+                        if isinstance(due_date, str):
+                            try:
+                                due_dt = datetime.fromisoformat(due_date.replace('Z', '+00:00'))
+                                details.append(f"Due: {due_dt.strftime('%b %d, %Y')}")
+                            except:
+                                details.append(f"Due: {due_date}")
+                        else:
+                            details.append(f"Due: {due_date.strftime('%b %d, %Y')}")
+                    if priority:
+                        details.append(f"Priority: {priority.title()}")
+                    if status:
+                        details.append(f"Status: {status.replace('-', ' ').title()}")
+                    if assignee:
+                        details.append(f"Responsible: {assignee}")
+                    if accountable:
+                        details.append(f"Accountable: {accountable}")
+                    
+                    detail_str = f" ({', '.join(details)})" if details else ""
+                    return f"New task created: {title}{detail_str}"
+                else:
+                    task_title = new_values.get('title', 'Task')
+                    assignee_id = new_values.get('assignee_id')
+                    accountable_id = new_values.get('accountable_id')
+                    responsible = f" (Responsible: {assignee_id})" if assignee_id else ""
+                    accountable = f" (Accountable: {accountable_id})" if accountable_id else ""
+                    return f"New task created: {task_title}{responsible}{accountable}"
+            elif table_lower == 'departments':
+                dept_name = new_values.get('name', 'Department')
+                if new_values.get('parent_department_id'):
+                    return f"New sub-department added: {dept_name}"
+                return f"New department created: {dept_name}"
+            elif table_lower == 'positions':
+                return f"New position created: {new_values.get('name', 'Position')}"
+        elif action_lower == 'update':
+            if table_lower == 'tasks':
+                if 'status' in new_values:
+                    return f"Task status changed: {old_values.get('status', 'Unknown')} → {new_values.get('status', 'Unknown')}"
+                return f"Task updated: {new_values.get('title', old_values.get('title', 'Task'))}"
+            elif table_lower == 'users':
+                if 'department_id' in new_values:
+                    return f"User department changed"
+                return f"User updated"
+            elif table_lower == 'departments':
+                return f"Department updated: {new_values.get('name', old_values.get('name', 'Department'))}"
+            elif table_lower == 'positions':
+                return f"Position updated: {new_values.get('name', old_values.get('name', 'Position'))}"
+        elif action_lower == 'delete':
+            if table_lower == 'users':
+                name = old_values.get('first_name', '') + ' ' + old_values.get('last_name', '')
+                return f"User deleted: {name.strip() or 'User'}"
+            elif table_lower == 'tasks':
+                return f"Task deleted: {old_values.get('title', 'Task')}"
+            elif table_lower == 'departments':
+                return f"Department deleted: {old_values.get('name', 'Department')}"
+            elif table_lower == 'positions':
+                return f"Position deleted: {old_values.get('name', 'Position')}"
+        
+        return f"{action} on {table_name}"
 
 # Global database service instance
 db_service = DatabaseService()

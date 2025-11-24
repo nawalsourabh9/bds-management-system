@@ -39,7 +39,8 @@ class Settings(BaseSettings):
     DB_SSLMODE: str = "prefer"
     
     class Config:
-        env_file = None  # Don't use .env file, only environment variables
+        env_file = ".env"  # Use .env file (Azure PostgreSQL configuration)
+        env_file_encoding = 'utf-8'
         case_sensitive = False
     
     @property
@@ -53,37 +54,17 @@ class Settings(BaseSettings):
             logger.info(f"Using DATABASE_URL from environment variable: postgresql://***@{db_url.split('@')[-1] if '@' in db_url else 'hidden'}")
             return db_url
         
-        # Read directly from environment variables (prefer env vars over BaseSettings defaults)
-        # This ensures we use the actual environment variables set in the container
-        db_host = os.getenv("DB_HOST")
-        db_port_str = os.getenv("DB_PORT")
-        db_name = os.getenv("DB_NAME")
-        db_user = os.getenv("DB_USER")
-        db_password = os.getenv("DB_PASSWORD")
-        db_sslmode = os.getenv("DB_SSLMODE")
+        # Use settings attributes (loaded from .env files by pydantic_settings)
+        db_host = self.DB_HOST
+        db_port = self.DB_PORT
+        db_name = self.DB_NAME
+        db_user = self.DB_USER
+        db_password = self.DB_PASSWORD
+        db_sslmode = self.DB_SSLMODE
         
         # Debug logging to see what we're getting
-        logger.info(f"Environment variable check - DB_HOST from os.getenv: {db_host}, from settings: {self.DB_HOST}")
-        logger.info(f"All DB env vars: DB_HOST={db_host}, DB_USER={db_user}, DB_NAME={db_name}, DB_SSLMODE={db_sslmode}")
-        
-        # Only use defaults if environment variables are not set
-        if not db_host:
-            db_host = self.DB_HOST
-        if not db_port_str:
-            db_port = self.DB_PORT
-        else:
-            db_port = int(db_port_str)
-        if not db_name:
-            db_name = self.DB_NAME
-        if not db_user:
-            db_user = self.DB_USER
-        if not db_password:
-            db_password = self.DB_PASSWORD
-        if not db_sslmode:
-            db_sslmode = self.DB_SSLMODE
-        
-        # Log the values being used (without password for security)
-        logger.info(f"Constructing DATABASE_URL from components - DB_HOST: {db_host}, DB_USER: {db_user}, DB_NAME: {db_name}, DB_SSLMODE: {db_sslmode}")
+        logger.info(f"Using database settings - DB_HOST: {db_host}, DB_USER: {db_user}, DB_NAME: {db_name}, DB_SSLMODE: {db_sslmode}")
+        logger.info(f"Password length: {len(db_password) if db_password else 0} characters")
         
         # URL encode both username and password to handle special characters (like @ in Azure usernames)
         encoded_user = quote_plus(db_user)
@@ -133,8 +114,5 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: Optional[str] = None
     FROM_EMAIL: str = "noreply@bdsmanufacturing.in"
     FROM_NAME: str = "BDS Management System"
-    
-    class Config:
-        env_file = ".env"
 
 settings = Settings()

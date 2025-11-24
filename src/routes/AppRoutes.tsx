@@ -30,6 +30,7 @@ import InviteUser from "@/pages/InviteUser";
 import NotFound from "@/pages/NotFound";
 import ChangePassword from "@/pages/ChangePassword";
 import CalendarPage from "@/pages/Calendar";
+import DepartmentSummary from "@/pages/DepartmentSummary";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
@@ -134,6 +135,7 @@ export const AppRoutes = () => {
         { path: "/users", element: <Users /> },
         { path: "/departments", element: <DepartmentsPage /> },
         { path: "/positions", element: <PositionsPage /> },
+        { path: "/department-summary", element: <DepartmentSummary /> },
         { path: "/mind-map/organization", element: <MindMapOrganization /> },
         { path: "/mind-map/departments", element: <MindMapDepartments /> },
         { path: "/mind-map/tasks", element: <MindMapTasks /> },

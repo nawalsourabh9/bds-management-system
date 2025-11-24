@@ -96,7 +96,8 @@ def get_user_supervisor(user_id: str):
         logger.error(f"Error fetching supervisor for user {user_id}: {e}")
         return None
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 # Helper function to create audit log
 def create_audit_log_entry(user_id: str, action: str, table_name: str, record_id: str, 
@@ -1013,8 +1014,13 @@ async def get_tasks():
         tasks = db_service.get_tasks()
         return {"tasks": tasks}
     except Exception as e:
-        logger.error(f"Error fetching tasks: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        import traceback
+        error_msg = str(e)
+        logger.error(f"Error fetching tasks: {error_msg}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        # Mask sensitive information in error message
+        safe_error = mask_sensitive_info(error_msg)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {safe_error}")
 
 @app.get("/api/v1/tasks/{task_id}")
 async def get_task(task_id: str):
@@ -1045,8 +1051,37 @@ async def get_users():
         users = db_service.get_users()
         return {"users": users}
     except Exception as e:
-        logger.error(f"Error fetching users: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        import traceback
+        error_msg = str(e)
+        logger.error(f"Error fetching users: {error_msg}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        # Mask sensitive information in error message
+        safe_error = mask_sensitive_info(error_msg)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {safe_error}")
+
+# Department Summary Endpoint - MUST be before /api/v1/users/{user_id} to avoid route conflict
+@app.get("/api/v1/users/{user_id}/department-summary")
+async def get_user_department_summary(user_id: str):
+    """Get department summary for a user based on their position"""
+    try:
+        # Validate UUID format
+        import uuid
+        try:
+            uuid.UUID(user_id)
+        except ValueError:
+            logger.warning(f"Invalid user ID format: {user_id}")
+            raise HTTPException(status_code=400, detail="Invalid user ID format")
+        
+        summary = get_department_summary_for_user(user_id)
+        if summary is None:
+            logger.warning(f"Department summary returned None for user: {user_id}")
+            raise HTTPException(status_code=404, detail="Department summary not found")
+        return summary
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting department summary for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.get("/api/v1/users/{user_id}")
 async def get_user(user_id: str):
@@ -1224,8 +1259,13 @@ async def get_departments():
         departments = db_service.get_departments()
         return {"departments": departments}
     except Exception as e:
-        logger.error(f"Error fetching departments: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        import traceback
+        error_msg = str(e)
+        logger.error(f"Error fetching departments: {error_msg}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        # Mask sensitive information in error message
+        safe_error = mask_sensitive_info(error_msg)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {safe_error}")
 
 @app.get("/api/v1/departments/{department_id}")
 async def get_department(department_id: str):
@@ -1405,8 +1445,13 @@ async def get_positions(department_id: str = None):
         positions = db_service.get_positions(department_id)
         return {"positions": positions}
     except Exception as e:
-        logger.error(f"Error fetching positions: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        import traceback
+        error_msg = str(e)
+        logger.error(f"Error fetching positions: {error_msg}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        # Mask sensitive information in error message
+        safe_error = mask_sensitive_info(error_msg)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {safe_error}")
 
 @app.get("/api/v1/positions/{position_id}")
 async def get_position(position_id: str):
@@ -1556,6 +1601,24 @@ async def get_department_hierarchy(department_id: str):
         return {"hierarchy": hierarchy}
     except Exception as e:
         logger.error(f"Error fetching department hierarchy: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.get("/api/v1/departments/activities")
+async def get_department_activities(department_ids: str = None, limit: int = 100):
+    """Get all activities (notifications and audit logs) for given departments"""
+    try:
+        if not department_ids:
+            return {"activities": []}
+        
+        # Parse comma-separated department IDs
+        dept_ids = [d.strip() for d in department_ids.split(',') if d.strip()]
+        if not dept_ids:
+            return {"activities": []}
+        
+        activities = db_service.get_department_activities(dept_ids, limit)
+        return {"activities": activities}
+    except Exception as e:
+        logger.error(f"Error fetching department activities: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/api/v1/departments/{department_id}/sub-departments")
@@ -2770,16 +2833,6 @@ async def delete_task(task_id: str):
         logger.error(f"Error deleting task: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-@app.get("/api/v1/users")
-async def get_users():
-    """Get all users"""
-    try:
-        users = db_service.get_users()
-        return {"users": users}
-    except Exception as e:
-        logger.error(f"Error fetching users: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
 @app.get("/api/v1/users/{user_id}")
 async def get_user(user_id: str):
     """Get a specific user by ID"""
@@ -2905,17 +2958,6 @@ async def create_admin():
         logger.error(f"Error creating admin: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-# Department Summary Endpoint
-@app.get("/api/v1/users/{user_id}/department-summary")
-async def get_user_department_summary(user_id: str):
-    """Get department summary for a user based on their position"""
-    try:
-        summary = get_department_summary_for_user(user_id)
-        return summary
-    except Exception as e:
-        logger.error(f"Error getting department summary: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
 # Position Holders Endpoint
 @app.get("/api/v1/departments/{department_id}/position-holders")
 async def get_department_position_holders(department_id: str):
@@ -2932,8 +2974,15 @@ async def get_department_position_holders(department_id: str):
 async def get_position_departments(position_id: str):
     """Get all departments that a position applies to"""
     try:
+        # First check if position exists
+        position = db_service.get_position_by_id(position_id)
+        if not position:
+            raise HTTPException(status_code=404, detail="Position not found")
+        
         departments = get_departments_for_position(position_id)
         return {"departments": departments}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting position departments: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

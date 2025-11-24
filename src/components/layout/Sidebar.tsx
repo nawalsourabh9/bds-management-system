@@ -20,6 +20,7 @@ import {
   Workflow,
   Brain,
   Calendar as CalendarIcon,
+  BarChart3,
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
@@ -53,6 +54,11 @@ const menuItems = [
     title: "Positions",
     icon: Building2,
     path: "/positions"
+  },
+  {
+    title: "Department Summary",
+    icon: BarChart3,
+    path: "/department-summary"
   }
 ];
 

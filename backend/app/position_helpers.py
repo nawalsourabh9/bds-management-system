@@ -246,6 +246,7 @@ def get_department_summary_for_user(user_id: str):
         - users_count: Users in departments
         - departments: List of department info
     """
+    conn = None
     try:
         from psycopg2.extras import RealDictCursor
         conn = db_service.get_connection()
@@ -285,35 +286,74 @@ def get_department_summary_for_user(user_id: str):
                     'departments': []
                 }
             
-            # Get task counts for these departments
+            # Get task counts per department
             cur.execute("""
                 SELECT 
-                    COUNT(*) as tasks_count,
-                    COUNT(*) FILTER (WHERE status = 'completed') as completed_tasks,
-                    COUNT(*) FILTER (WHERE status IN ('not-started', 'pending', 'in-progress')) as pending_tasks,
-                    COUNT(*) FILTER (WHERE status = 'overdue') as overdue_tasks
-                FROM tasks
-                WHERE department_id = ANY(%s)
-                AND status != 'cancelled'
+                    d.id as department_id,
+                    d.name as department_name,
+                    d.parent_department_id,
+                    parent_d.name as parent_department_name,
+                    COUNT(t.id) FILTER (WHERE t.id IS NOT NULL) as tasks_count,
+                    COUNT(t.id) FILTER (WHERE t.status = 'completed') as completed_tasks,
+                    COUNT(t.id) FILTER (WHERE t.status IN ('not-started', 'pending', 'in-progress')) as pending_tasks,
+                    COUNT(t.id) FILTER (WHERE t.due_date < CURRENT_DATE AND t.status NOT IN ('completed', 'cancelled')) as overdue_tasks
+                FROM departments d
+                LEFT JOIN tasks t ON d.id = t.department_id AND (t.status IS NULL OR t.status != 'cancelled')
+                LEFT JOIN departments parent_d ON d.parent_department_id = parent_d.id
+                WHERE d.id = ANY(%s)
+                GROUP BY d.id, d.name, d.parent_department_id, parent_d.name
+                ORDER BY d.name
             """, (department_ids,))
-            task_stats = cur.fetchone()
+            dept_task_stats = cur.fetchall()
             
-            # Get user counts
+            # Get user counts per department
             cur.execute("""
-                SELECT COUNT(*) as users_count
-                FROM users
-                WHERE department_id = ANY(%s)
-                AND is_active = true
+                SELECT 
+                    d.id as department_id,
+                    COUNT(u.id) as users_count
+                FROM departments d
+                LEFT JOIN users u ON d.id = u.department_id AND u.is_active = true
+                WHERE d.id = ANY(%s)
+                GROUP BY d.id
             """, (department_ids,))
-            user_stats = cur.fetchone()
+            dept_user_stats = {row['department_id']: row['users_count'] for row in cur.fetchall()}
+            
+            # Build department summaries with per-department stats
+            department_summaries = []
+            total_tasks = 0
+            total_completed = 0
+            total_pending = 0
+            total_overdue = 0
+            total_users = 0
+            
+            for dept_stat in dept_task_stats:
+                dept_id = str(dept_stat['department_id'])
+                dept_summary = {
+                    'id': dept_id,
+                    'name': dept_stat['department_name'],
+                    'parent_department_id': str(dept_stat['parent_department_id']) if dept_stat['parent_department_id'] else None,
+                    'parent_department_name': dept_stat['parent_department_name'],
+                    'tasks_count': dept_stat['tasks_count'] or 0,
+                    'completed_tasks': dept_stat['completed_tasks'] or 0,
+                    'pending_tasks': dept_stat['pending_tasks'] or 0,
+                    'overdue_tasks': dept_stat['overdue_tasks'] or 0,
+                    'users_count': dept_user_stats.get(dept_id, 0)
+                }
+                department_summaries.append(dept_summary)
+                
+                total_tasks += dept_summary['tasks_count']
+                total_completed += dept_summary['completed_tasks']
+                total_pending += dept_summary['pending_tasks']
+                total_overdue += dept_summary['overdue_tasks']
+                total_users += dept_summary['users_count']
             
             return {
-                'tasks_count': task_stats['tasks_count'] if task_stats else 0,
-                'completed_tasks': task_stats['completed_tasks'] if task_stats else 0,
-                'pending_tasks': task_stats['pending_tasks'] if task_stats else 0,
-                'overdue_tasks': task_stats['overdue_tasks'] if task_stats else 0,
-                'users_count': user_stats['users_count'] if user_stats else 0,
-                'departments': departments
+                'tasks_count': total_tasks,
+                'completed_tasks': total_completed,
+                'pending_tasks': total_pending,
+                'overdue_tasks': total_overdue,
+                'users_count': total_users,
+                'departments': department_summaries
             }
     except Exception as e:
         logger.error(f"Error getting department summary for user: {e}")
