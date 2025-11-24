@@ -979,14 +979,16 @@ class DatabaseService:
                     # Get all sub-departments of the main departments assigned to this position
                     sub_depts = []
                     if main_dept_ids:
-                        cur.execute("""
+                        # Use IN clause with tuple for proper UUID comparison
+                        placeholders = ','.join(['%s'] * len(main_dept_ids))
+                        cur.execute(f"""
                             SELECT d.id, d.name, d.parent_department_id,
                                    parent_d.name as parent_department_name
                             FROM departments d
                             LEFT JOIN departments parent_d ON d.parent_department_id = parent_d.id
-                            WHERE d.parent_department_id = ANY(%s)
+                            WHERE d.parent_department_id IN ({placeholders})
                             ORDER BY parent_d.name, d.name
-                        """, (main_dept_ids,))
+                        """, tuple(main_dept_ids))
                         sub_depts = cur.fetchall()
                     
                     # Combine directly assigned departments with sub-departments of main departments
@@ -1025,7 +1027,13 @@ class DatabaseService:
                                 unique_depts.append(d)
                         
                         pos_dict['department_names'] = [d['name'] for d in main_depts] if main_depts else [d['name'] for d in dept_rows]
+                        # Include all departments and sub-departments - ensure parent_department_id and parent_department_name are included
                         pos_dict['departments'] = [dict(d) for d in unique_depts]  # Include all departments and sub-departments
+                        
+                        # Debug logging to verify sub-departments are included
+                        sub_dept_count = len([d for d in unique_depts if d.get('parent_department_id')])
+                        if sub_dept_count > 0:
+                            logger.debug(f"Position {pos_dict.get('name')} has {sub_dept_count} sub-departments in departments array")
                         
                         # For backward compatibility, set first main department as primary
                         if main_depts:

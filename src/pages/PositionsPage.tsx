@@ -174,55 +174,65 @@ export const PositionsPage = () => {
               </tr>
             </thead>
             <tbody>
-              {positions.map((position) => (
-                <tr key={position.id} className="border-b hover:bg-gray-50">
-                  <td className="p-4 font-medium">{position.name}</td>
-                  <td className="p-4">
-                    {(position as any).applies_to_all_departments 
-                      ? <span className="font-semibold text-blue-600">All Departments</span>
-                      : (() => {
-                          const depts = (position as any).departments || [];
-                          const mainDepts = depts.filter((d: any) => !d.parent_department_id);
-                          if (mainDepts.length > 0) {
-                            return mainDepts.map((d: any) => d.name).join(', ');
-                          }
-                          // Fallback to old format if departments array not available
-                          return position.parent_department_name || position.department_name || 'No Department';
-                        })()
-                    }
-                  </td>
-                  <td className="p-4">
-                    {(position as any).applies_to_all_departments 
-                      ? <span className="text-gray-400">-</span>
-                      : (() => {
-                          const depts = (position as any).departments || [];
-                          const subDepts = depts.filter((d: any) => d.parent_department_id);
-                          
-                          if (subDepts.length > 0) {
-                            // Group sub-departments by parent department for better readability
-                            const grouped: Record<string, string[]> = {};
-                            subDepts.forEach((sub: any) => {
-                              const parentName = sub.parent_department_name || 'Unknown';
-                              if (!grouped[parentName]) {
-                                grouped[parentName] = [];
-                              }
-                              grouped[parentName].push(sub.name);
-                            });
-                            
-                            // If only one parent, show simple list; otherwise group by parent
-                            if (Object.keys(grouped).length === 1) {
-                              return subDepts.map((d: any) => d.name).join(', ');
-                            } else {
-                              // Format: "Parent1: Sub1, Sub2 | Parent2: Sub3"
-                              return Object.entries(grouped)
-                                .map(([parent, subs]) => `${parent}: ${subs.join(', ')}`)
-                                .join(' | ');
-                            }
-                          }
-                          return <span className="text-gray-400">-</span>;
-                        })()
-                    }
-                  </td>
+              {positions.map((position) => {
+                const depts = (position as any).departments || [];
+                const mainDepts = depts.filter((d: any) => !d.parent_department_id);
+                const subDepts = depts.filter((d: any) => d.parent_department_id);
+                
+                // Group sub-departments by parent department
+                const groupedSubDepts: Record<string, Array<{id: string, name: string}>> = {};
+                subDepts.forEach((sub: any) => {
+                  const parentName = sub.parent_department_name || 'Unknown';
+                  if (!groupedSubDepts[parentName]) {
+                    groupedSubDepts[parentName] = [];
+                  }
+                  groupedSubDepts[parentName].push({ id: sub.id, name: sub.name });
+                });
+                
+                return (
+                  <tr key={position.id} className="border-b hover:bg-gray-50 align-top">
+                    <td className="p-4 font-medium">{position.name}</td>
+                    <td className="p-4 min-w-[200px]">
+                      {(position as any).applies_to_all_departments 
+                        ? <span className="font-semibold text-blue-600">All Departments</span>
+                        : mainDepts.length > 0 ? (
+                          <div className="flex flex-col gap-1">
+                            {mainDepts.map((dept: any) => (
+                              <div key={dept.id} className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-sm font-medium">
+                                {dept.name}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )
+                      }
+                    </td>
+                    <td className="p-4 min-w-[250px]">
+                      {(position as any).applies_to_all_departments 
+                        ? <span className="text-gray-400">-</span>
+                        : Object.keys(groupedSubDepts).length > 0 ? (
+                          <div className="flex flex-col gap-2">
+                            {Object.entries(groupedSubDepts).map(([parentName, subs]) => (
+                              <div key={parentName} className="flex flex-col gap-1">
+                                <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                                  {parentName}
+                                </div>
+                                <div className="flex flex-col gap-1 pl-2 border-l-2 border-gray-200">
+                                  {subs.map((sub) => (
+                                    <div key={sub.id} className="px-2 py-1 bg-gray-50 text-gray-700 rounded text-sm">
+                                      {sub.name}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )
+                      }
+                    </td>
                   <td className="p-4">
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                       {getLevelName(position.level)}
@@ -257,7 +267,8 @@ export const PositionsPage = () => {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
