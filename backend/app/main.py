@@ -546,7 +546,7 @@ async def admin_reset_password_random(payload: dict, request: Request):
 
         # Generate random password
         import secrets, string
-        alphabet = string.ascii_letters + string.digits
+        alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
         new_password = ''.join(secrets.choice(alphabet) for _ in range(12))
         new_password_effective = new_password.encode('utf-8')[:72].decode('utf-8', errors='ignore')
         new_hash = hash_password(new_password_effective)
@@ -940,6 +940,73 @@ async def change_password(password_data: dict):
         raise
     except Exception as e:
         logger.error(f"Error changing password: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.post("/api/v1/auth/generate-password")
+async def generate_secure_password():
+    """Generate a secure random password for users"""
+    try:
+        import secrets, string
+        alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+        password = ''.join(secrets.choice(alphabet) for _ in range(12))
+        return {"password": password}
+    except Exception as e:
+        logger.error(f"Generate password error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.post("/api/v1/auth/admin/set-password")
+async def admin_set_user_password(payload: dict, request: Request):
+    """Admin sets a specific password for a user (for manual password assignment)"""
+    try:
+        admin_token = request.headers.get("X-Admin-Token")
+        expected = get_admin_reset_token()
+        if not expected or admin_token != expected:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        user_id = payload.get("user_id")
+        email = payload.get("email")
+        new_password = payload.get("new_password")
+
+        if not ((user_id or email) and new_password):
+            raise HTTPException(status_code=400, detail="Provide user_id or email, and new_password")
+
+        if len(new_password) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+        # Find user
+        user = None
+        if user_id:
+            user = db_service.get_user_by_id(user_id)
+        elif email:
+            user = db_service.get_user_by_email(email)
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        target_id = user.get('id') if isinstance(user, dict) else user
+
+        # Hash and update password
+        new_hash = hash_password(new_password)
+
+        conn = db_service.get_connection()
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    "UPDATE users SET password_hash = %s, is_verified = TRUE, updated_at = NOW() WHERE id = %s",
+                    (new_hash, str(target_id))
+                )
+                conn.commit()
+        finally:
+            conn.close()
+
+        return {
+            "message": "Password set successfully",
+            "user_id": str(target_id)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"admin_set_user_password error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/api/v1/tasks/grouped")

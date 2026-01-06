@@ -450,6 +450,10 @@ deployment/
 *.tar.gz
 *.zip
 
+# Deployment scripts (may contain environment-specific configurations)
+scripts/deploy*.sh
+scripts/*deploy*.sh
+
 # ===== MONITORING =====
 
 # Monitoring and analytics

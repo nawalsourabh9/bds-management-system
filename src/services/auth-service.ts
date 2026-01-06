@@ -116,3 +116,89 @@ export const changePassword = async (currentPassword: string, newPassword: strin
     throw error;
   }
 };
+
+// Admin password management functions
+export const adminResetPasswordRandom = async (userId?: string, email?: string): Promise<{temporary_password: string}> => {
+  try {
+    // Use different tokens for different environments
+    const isLocal = API_BASE.includes('localhost') || API_BASE.includes('127.0.0.1');
+    const adminToken = isLocal ? 'local-dev-admin-token-12345' : 'your-admin-token-here';
+
+    const response = await fetch(`${API_BASE}/api/v1/auth/admin/reset-password-random`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Admin-Token': adminToken
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        email: email
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Failed to reset password');
+    }
+
+    const data = await response.json();
+    toast.success(`Password reset successfully for ${email || userId}`);
+    return data;
+  } catch (error: any) {
+    console.error('Error resetting password:', error);
+    toast.error(error.message || 'Failed to reset password');
+    throw error;
+  }
+};
+
+
+export const adminSetPassword = async (newPassword: string, userId?: string, email?: string): Promise<void> => {
+  try {
+    const isLocal = API_BASE.includes('localhost') || API_BASE.includes('127.0.0.1');
+    const adminToken = isLocal ? 'local-dev-admin-token-12345' : 'your-admin-token-here';
+
+    const response = await fetch(`${API_BASE}/api/v1/auth/admin/set-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Admin-Token': adminToken
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        email: email,
+        new_password: newPassword
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Failed to set password');
+    }
+
+    toast.success('Password set successfully');
+  } catch (error: any) {
+    console.error('Error setting password:', error);
+    toast.error(error.message || 'Failed to set password');
+    throw error;
+  }
+};
+
+export const generateSecurePassword = async (): Promise<{password: string}> => {
+  try {
+    const response = await fetch(`${API_BASE}/api/v1/auth/generate-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to generate password');
+    }
+
+    return await response.json();
+  } catch (error: any) {
+    console.error('Error generating password:', error);
+    throw error;
+  }
+};

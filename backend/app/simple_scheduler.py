@@ -40,18 +40,23 @@ class SimpleScheduler:
             try:
                 # Call the database function that handles everything
                 result = db_service.execute_query("SELECT run_scheduled_tasks();")
-                
+
                 if result and len(result) > 0:
                     task_result = result[0]['run_scheduled_tasks']
                     logger.info(f"Scheduled tasks completed: {task_result}")
-                    
-                    # Log metrics
-                    recurring = task_result.get('recurring_generated', 0)
-                    overdue = task_result.get('overdue_marked', 0)
-                    reminders = task_result.get('reminders_sent', 0)
-                    
-                    if recurring > 0 or overdue > 0 or reminders > 0:
-                        logger.info(f"Generated {recurring} recurring tasks, marked {overdue} overdue, sent {reminders} reminders")
+
+                    # task_result is an integer (number of generated tasks)
+                    # Log the number of tasks generated
+                    if isinstance(task_result, int) and task_result > 0:
+                        logger.info(f"Generated {task_result} recurring tasks")
+                    elif isinstance(task_result, dict):
+                        # Fallback for future dictionary returns
+                        recurring = task_result.get('recurring_generated', 0)
+                        overdue = task_result.get('overdue_marked', 0)
+                        reminders = task_result.get('reminders_sent', 0)
+
+                        if recurring > 0 or overdue > 0 or reminders > 0:
+                            logger.info(f"Generated {recurring} recurring tasks, marked {overdue} overdue, sent {reminders} reminders")
                 
                 # Run every 5 minutes
                 await asyncio.sleep(300)
@@ -79,7 +84,12 @@ async def trigger_manual_run():
     try:
         result = db_service.execute_query("SELECT run_scheduled_tasks();")
         if result and len(result) > 0:
-            return result[0]['run_scheduled_tasks']
+            task_count = result[0]['run_scheduled_tasks']
+            return {
+                "success": True,
+                "recurring_generated": task_count if isinstance(task_count, int) else 0,
+                "message": f"Generated {task_count} recurring tasks"
+            }
         return {"error": "No result from database"}
     except Exception as e:
         logger.error(f"Error in manual trigger: {e}")

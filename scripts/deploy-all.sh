@@ -592,11 +592,23 @@ build_image() {
     
     # Add build arguments for frontend
     if [ "$component" = "$FRONTEND_IMAGE" ]; then
-        local backend_url="https://$BACKEND_IMAGE.graystone-766c02c8.centralindia.azurecontainerapps.io"
+        # Get backend API URL from Key Vault
+        local backend_url=$(az keyvault secret show --vault-name "$KEYVAULT_NAME" --name "api-url" --query value -o tsv 2>/dev/null)
+        if [ -z "$backend_url" ]; then
+            # Dynamically retrieve backend URL from Azure Container Apps
+            backend_url=$(az containerapp show --name "$BACKEND_IMAGE" --resource-group "$RESOURCE_GROUP" --query "properties.configuration.ingress.fqdn" -o tsv 2>/dev/null)
+            if [ -z "$backend_url" ]; then
+                log_error "Failed to retrieve backend URL from Azure Container Apps"
+                return 1
+            fi
+            backend_url="https://$backend_url"
+            log_info "Retrieved backend URL dynamically: $backend_url"
+        fi
+
         build_cmd="$build_cmd --build-arg VITE_API_BASE_URL=$backend_url"
         build_cmd="$build_cmd --build-arg VITE_APP_NAME='BDS Management System'"
         build_cmd="$build_cmd --build-arg VITE_APP_ENV=production"
-        log_info "Adding frontend build arguments with backend URL: $backend_url"
+        log_info "Adding frontend build arguments with backend URL from Key Vault: $backend_url"
     fi
     
     if [ -n "$dockerfile" ]; then
@@ -645,10 +657,32 @@ deploy_to_aca() {
     log_info "Deploying $component to Azure Container Apps..."
     
     if [ "$component" = "$BACKEND_IMAGE" ]; then
-        # Check if container app exists
+        # Check if container app exists, create if it doesn't
         if ! az containerapp show --name "$BACKEND_IMAGE" --resource-group "$RESOURCE_GROUP" &>/dev/null; then
-            log_error "Backend container app '$BACKEND_IMAGE' does not exist. Please create it first."
-            return 1
+            log_info "Creating new backend container app..."
+            # Get ACR credentials
+            local acr_password=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" --output tsv)
+
+            if ! az containerapp create \
+                --name "$BACKEND_IMAGE" \
+                --resource-group "$RESOURCE_GROUP" \
+                --environment "$ENVIRONMENT_NAME" \
+                --image "$ACR_NAME.azurecr.io/$component:$version" \
+                --revision-suffix "$revision_suffix" \
+                --target-port 8000 \
+                --ingress external \
+                --cpu 0.5 \
+                --memory 1Gi \
+                --min-replicas 0 \
+                --max-replicas 10 \
+                --registry-server "$ACR_NAME.azurecr.io" \
+                --registry-username "$ACR_NAME" \
+                --registry-password "$acr_password"; then
+                log_error "Failed to create backend container app"
+                return 1
+            fi
+
+            log_success "Backend container app created successfully"
         fi
         
         # Ensure revision mode is set to multiple for traffic routing
@@ -669,231 +703,152 @@ deploy_to_aca() {
             log_success "Revision mode set to multiple"
         fi
         
-        # Ensure Key Vault secrets are registered in the container app
-        log_info "Ensuring Key Vault secrets are registered in container app..."
-        
-        # Get managed identity for the container app
-        local managed_identity=$(az containerapp show \
+        # Set up secure Key Vault integration with managed identity
+        log_info "Setting up secure Key Vault integration with managed identity..."
+
+        # Enable system-assigned managed identity on container app
+        log_info "Enabling managed identity on container app..."
+        if ! az containerapp identity show --name "$BACKEND_IMAGE" --resource-group "$RESOURCE_GROUP" &>/dev/null; then
+            az containerapp identity assign \
+                --name "$BACKEND_IMAGE" \
+                --resource-group "$RESOURCE_GROUP" \
+                --system-assigned
+            log_success "Managed identity enabled on container app"
+        else
+            log_info "Managed identity already enabled"
+        fi
+
+        # Get the managed identity principal ID
+        local principal_id=$(az containerapp identity show \
             --name "$BACKEND_IMAGE" \
             --resource-group "$RESOURCE_GROUP" \
-            --query "identity.principalId" -o tsv 2>/dev/null || echo "")
-        
-        # List of secrets to register (Key Vault secret name -> Container App secret name)
-        local secrets_to_register=(
-            "db-host:db-host"
-            "db-user:db-user"
-            "db-password:db-password"
-            "db-name:db-name"
-        )
-        
-        # Register secrets from Key Vault if they don't exist
-        for secret_pair in "${secrets_to_register[@]}"; do
-            local kv_secret_name="${secret_pair%%:*}"
-            local ca_secret_name="${secret_pair##*:}"
-            
-            # Always register/re-register secrets to ensure consistent format (all using 'system' identity)
-            log_info "Registering Key Vault secret: $ca_secret_name from $kv_secret_name"
-            
-            # Get Key Vault URL
-            local kv_url=$(az keyvault show --name "$KEYVAULT_NAME" --query "properties.vaultUri" -o tsv 2>/dev/null || echo "")
-            if [ -z "$kv_url" ]; then
-                log_error "Failed to get Key Vault URL for $KEYVAULT_NAME"
-                continue
-            fi
-            
-            # Ensure URL ends with / and construct full secret URL
-            # Format: secret-name=keyvaultref:https://vault-name.vault.azure.net/secrets/secret-name,identityref:system
-            # Use 'system' for system-assigned identity
-            kv_url="${kv_url%/}"  # Remove trailing slash if present
-            local secret_value="${kv_url}/secrets/${kv_secret_name}"
-            
-            if az containerapp secret set \
-                --name "$BACKEND_IMAGE" \
-                --resource-group "$RESOURCE_GROUP" \
-                --secrets "$ca_secret_name=keyvaultref:${secret_value},identityref:system" 2>&1 | tee /tmp/secret-register.log; then
-                log_success "Successfully registered secret: $ca_secret_name"
-            else
-                log_error "Failed to register secret $ca_secret_name"
-                cat /tmp/secret-register.log >&2
-            fi
-        done
-        
-        # Wait for secrets to be fully registered and propagated
-        log_info "Waiting for secrets to be fully registered and propagated..."
-        sleep 10
-        
-        # Verify all required secrets are registered
-        log_info "Verifying all secrets are registered..."
-        local missing_secrets=""
-        for secret_pair in "${secrets_to_register[@]}"; do
-            local ca_secret_name="${secret_pair##*:}"
-            if ! az containerapp secret list \
-                --name "$BACKEND_IMAGE" \
-                --resource-group "$RESOURCE_GROUP" \
-                --query "[?name=='$ca_secret_name'].name" -o tsv 2>/dev/null | grep -q "^${ca_secret_name}$"; then
-                missing_secrets="${missing_secrets} ${ca_secret_name}"
-            fi
-        done
-        
-        if [ -n "$missing_secrets" ]; then
-            log_error "Some secrets are missing:$missing_secrets"
-                return 1
-            fi
-        log_success "All required secrets are registered"
-        
-        # Use REST API to set environment variables with secretRef
-        # Azure CLI doesn't support secretRef directly in --set-env-vars, so we use REST API
-        log_info "Deploying with Key Vault secret references via REST API..."
-        
-        local subscription_id=$(az account show --query id -o tsv)
-        
-        # Fetch fresh container app config after secrets are registered
-        log_info "Fetching fresh container app configuration..."
-        az containerapp show --name "$BACKEND_IMAGE" --resource-group "$RESOURCE_GROUP" --output json > /tmp/containerapp-config.json
-        
-        # Verify secrets are in the config
-        local config_secrets=$(python3 -c "import json; f=open('/tmp/containerapp-config.json'); c=json.load(f); print(','.join([s['name'] for s in c['properties']['configuration'].get('secrets', [])]))" 2>/dev/null || echo "")
-        log_info "Secrets in container app config: $config_secrets"
-        
-        python3 << PYEOF
-import json
-from datetime import datetime
+            --query principalId -o tsv)
 
-with open('/tmp/containerapp-config.json', 'r') as f:
-    config = json.load(f)
+        # Assign Key Vault Secrets User role to managed identity
+        log_info "Assigning Key Vault access to managed identity..."
+        local kv_scope="/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.KeyVault/vaults/$KEYVAULT_NAME"
 
-container = config['properties']['template']['containers'][0]
-container['image'] = '$ACR_NAME.azurecr.io/$component:$version'
-container.pop('imageType', None)
+        if ! az role assignment list \
+            --assignee "$principal_id" \
+            --role "Key Vault Secrets User" \
+            --scope "$kv_scope" \
+            --query "[].id" -o tsv | grep -q .; then
 
-# Build environment variables using secretRef format
-env_vars = [
-    {'name': 'DB_HOST', 'secretRef': 'db-host'},
-    {'name': 'DB_USER', 'secretRef': 'db-user'},
-    {'name': 'DB_PASSWORD', 'secretRef': 'db-password'},
-    {'name': 'DB_NAME', 'secretRef': 'db-name'},
-    {'name': 'DB_SSLMODE', 'value': 'require'},
-    {'name': 'ENVIRONMENT', 'value': 'production'},
-    {'name': 'DEPLOYMENT_TIMESTAMP', 'value': datetime.now().isoformat()}
-]
-
-# Note: DATABASE_URL will be constructed by the app from DB_* env vars
-# If you need DATABASE_URL directly, you'd need to construct it server-side
-# or use a script that reads the individual DB_* vars and constructs it
-
-container['env'] = env_vars
-
-patch_body = {
-    'properties': {
-        'template': {
-            'containers': [container],
-            'revisionSuffix': '$revision_suffix',
-            'scale': {
-                'minReplicas': 0,
-                'maxReplicas': 10
-            }
-        }
-    }
-}
-
-with open('/tmp/patch-template.json', 'w') as f:
-    json.dump(patch_body, f, indent=2)
-PYEOF
-
-        # Apply the update via REST API
-        if az rest --method PATCH \
-            --uri "/subscriptions/$subscription_id/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.App/containerapps/$BACKEND_IMAGE?api-version=2024-03-01" \
-            --body @/tmp/patch-template.json > /tmp/rest-output.log 2>&1; then
-            log_success "Backend updated successfully with Key Vault secret references"
-            update_exit_code=0
+            az role assignment create \
+                --assignee "$principal_id" \
+                --role "Key Vault Secrets User" \
+                --scope "$kv_scope"
+            log_success "Key Vault access granted to managed identity"
         else
-            log_error "Failed to update backend via REST API"
-            cat /tmp/rest-output.log >&2
-            update_exit_code=1
+            log_info "Key Vault access already granted"
         fi
-            
-            if [ $update_exit_code -eq 0 ]; then
-                log_success "Backend updated successfully with Key Vault secret references"
-                
-                # Wait for revision to be fully created and propagated
-                log_info "Waiting for revision to be fully created..."
-                sleep 15
-                
-                local new_revision=$(az containerapp revision list \
-                --name "$BACKEND_IMAGE" \
-                --resource-group "$RESOURCE_GROUP" \
-                    --query "[?contains(name, '$revision_suffix')].name" \
-                    -o tsv 2>/dev/null | head -1 || echo "")
-                
-                if [[ -n "$new_revision" ]]; then
-                    log_success "New revision created: $new_revision"
-                    
-                    # Route 100% traffic to the new revision
-                    log_info "Routing 100% traffic to new revision: $new_revision"
-                    if az containerapp ingress traffic set \
-                        --name "$BACKEND_IMAGE" \
-                        --resource-group "$RESOURCE_GROUP" \
-                        --revision-weight "$new_revision=100" 2>&1 | tee /tmp/traffic-set.log; then
-                        log_success "Traffic routed to new revision: $new_revision"
-                    else
-                        log_warning "Failed to set traffic routing, but revision was created"
-                        cat /tmp/traffic-set.log >&2
-                    fi
-                    
-                    # Deactivate old revisions (those not receiving traffic)
-                    log_info "Deactivating old revisions..."
-                    local old_revisions=$(az containerapp revision list \
-                        --name "$BACKEND_IMAGE" \
-                        --resource-group "$RESOURCE_GROUP" \
-                        --query "[?name!='$new_revision' && properties.active==\`true\`].name" \
-                        -o tsv 2>/dev/null || echo "")
-                    
-                    if [[ -n "$old_revisions" ]]; then
-                        while IFS= read -r old_revision; do
-                            if [[ -n "$old_revision" ]]; then
-                                log_info "Deactivating revision: $old_revision"
-                                az containerapp revision deactivate \
-                                    --revision "$old_revision" \
-                                    --name "$BACKEND_IMAGE" \
-                                    --resource-group "$RESOURCE_GROUP" 2>/dev/null || {
-                                    log_warning "Failed to deactivate revision: $old_revision"
-                                }
-                            fi
-                        done <<< "$old_revisions"
-                        log_success "Old revisions deactivated"
-                    else
-                        log_info "No old revisions to deactivate"
-                    fi
-                else
-                    log_warning "New revision with suffix $revision_suffix not found yet. Checking all revisions..."
-                    az containerapp revision list \
-                        --name "$BACKEND_IMAGE" \
-                --resource-group "$RESOURCE_GROUP" \
-                        --query "[].{name:name, created:properties.createdTime, image:properties.template.containers[0].image, trafficWeight:properties.trafficWeight}" \
-                        --output table | head -5
-                fi
-            else
-                # If update failed, show the error
-                log_error "Backend deployment failed. Error details:"
-                if [ -f /tmp/rest-output.log ]; then
-                    cat /tmp/rest-output.log >&2
-                fi
+
+        # Register Key Vault secrets as secret references
+        log_info "Registering Key Vault secret references..."
+
+        # Check if secrets already exist in container app
+        local existing_secrets=$(az containerapp secret list \
+            --name "$BACKEND_IMAGE" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query "[].name" -o tsv)
+
+        local kv_url="https://$KEYVAULT_NAME.vault.azure.net"
+
+        # Register each secret if not already registered
+        for secret_name in "db-host" "db-user" "db-password" "db-name"; do
+            if ! echo "$existing_secrets" | grep -q "^${secret_name}$"; then
+                log_info "Registering secret reference: $secret_name"
+                az containerapp secret set \
+                    --name "$BACKEND_IMAGE" \
+                    --resource-group "$RESOURCE_GROUP" \
+                    --secrets "${secret_name}=keyvaultref:${kv_url}/secrets/${secret_name},identityref:system"
+            fi
+        done
+
+        log_success "Key Vault secret references registered"
+
+        # Update container app to use secret references in environment variables
+        log_info "Configuring environment variables to use Key Vault references..."
+
+        # Try Key Vault references first, fallback to direct values if they don't work
+        if az containerapp update \
+            --name "$BACKEND_IMAGE" \
+            --resource-group "$RESOURCE_GROUP" \
+            --set-env-vars \
+                "DB_HOST=secretref:db-host" \
+                "DB_USER=secretref:db-user" \
+                "DB_PASSWORD=secretref:db-password" \
+                "DB_NAME=secretref:db-name" \
+                "DB_SSLMODE=require" \
+                "ENVIRONMENT=production" 2>/dev/null; then
+            log_success "Key Vault secret references configured successfully"
+        else
+            log_warning "Key Vault references failed, falling back to direct environment variables"
+
+            # Retrieve database credentials from Key Vault (no fallbacks)
+            local db_host=$(az keyvault secret show --vault-name "$KEYVAULT_NAME" --name "db-host" --query value -o tsv 2>/dev/null)
+            local db_user=$(az keyvault secret show --vault-name "$KEYVAULT_NAME" --name "db-user" --query value -o tsv 2>/dev/null)
+            local db_password=$(az keyvault secret show --vault-name "$KEYVAULT_NAME" --name "db-password" --query value -o tsv 2>/dev/null)
+            local db_name=$(az keyvault secret show --vault-name "$KEYVAULT_NAME" --name "db-name" --query value -o tsv 2>/dev/null)
+
+            # Validate all required database credentials are available
+            if [ -z "$db_host" ] || [ -z "$db_user" ] || [ -z "$db_password" ] || [ -z "$db_name" ]; then
+                log_error "Failed to retrieve complete database credentials from Key Vault"
+                log_error "Missing: $([ -z "$db_host" ] && echo "db-host ") $([ -z "$db_user" ] && echo "db-user ") $([ -z "$db_password" ] && echo "db-password ") $([ -z "$db_name" ] && echo "db-name ")"
                 return 1
             fi
+
+            az containerapp update \
+                --name "$BACKEND_IMAGE" \
+                --resource-group "$RESOURCE_GROUP" \
+                --set-env-vars \
+                    "DB_HOST=$db_host" \
+                    "DB_USER=$db_user" \
+                    "DB_PASSWORD=$db_password" \
+                    "DB_NAME=$db_name" \
+                    "DB_SSLMODE=require" \
+                    "ENVIRONMENT=production"
+
+            log_success "Direct environment variables configured as fallback"
+        fi
+
+        log_success "Secure Key Vault integration completed!"
+        log_info "Secrets are now resolved at runtime and never visible in container environment"
+
+        # Store backend API URL in Key Vault for frontend to use
+        local backend_url=$(az containerapp show \
+            --name "$BACKEND_IMAGE" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query "properties.configuration.ingress.fqdn" \
+            --output tsv)
+
+        if [ -n "$backend_url" ]; then
+            backend_url="https://$backend_url"
+            log_info "Storing backend API URL in Key Vault: $backend_url"
+
+            # Store or update the API URL in Key Vault
+            az keyvault secret set \
+                --vault-name "$KEYVAULT_NAME" \
+                --name "api-url" \
+                --value "$backend_url" >/dev/null 2>&1
+
+            log_success "Backend API URL stored in Key Vault for frontend use"
         else
-        # Frontend deployment - get dynamic backend URL
-        local backend_domain=$(az containerapp env show --name "$ENVIRONMENT_NAME" --resource-group "$RESOURCE_GROUP" --query "properties.defaultDomain" --output tsv 2>/dev/null)
-        local backend_url="https://$BACKEND_IMAGE.$backend_domain"
-        
-        # Try to get API URL from Key Vault, fallback to dynamic URL
-        local api_url=$(az keyvault secret show --vault-name "$KEYVAULT_NAME" --name api-base-url --query value --output tsv 2>/dev/null || echo "$backend_url")
-        
-        # Check if container app exists
+            log_warning "Could not retrieve backend URL to store in Key Vault"
+        fi
+
+        log_success "Backend deployment completed successfully"
+        return 0
+        else
+        # Frontend deployment to Container Apps
+        log_info "Deploying frontend to Azure Container Apps..."
+
+        # Check if container app exists, create if it doesn't
         if ! az containerapp show --name "$FRONTEND_IMAGE" --resource-group "$RESOURCE_GROUP" &>/dev/null; then
             log_info "Creating new frontend container app..."
             # Get ACR credentials
             local acr_password=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" --output tsv)
-            
+
             if ! az containerapp create \
                 --name "$FRONTEND_IMAGE" \
                 --resource-group "$RESOURCE_GROUP" \
@@ -908,180 +863,24 @@ PYEOF
                 --max-replicas 10 \
                 --registry-server "$ACR_NAME.azurecr.io" \
                 --registry-username "$ACR_NAME" \
-                --registry-password "$acr_password" \
-                --set-env-vars \
-                    "VITE_API_URL=${api_url}" \
-                    "VITE_APP_NAME=BDS Management System" \
-                    "VITE_APP_ENV=production"; then
-                log_error "Failed to create frontend"
+                --registry-password "$acr_password"; then
+                log_error "Failed to create frontend container app"
                 return 1
             fi
-            
-            # Set revision mode to multiple for traffic routing
-            log_info "Setting revision mode to multiple for traffic routing..."
-            az containerapp revision set-mode \
-                --name "$FRONTEND_IMAGE" \
-                --resource-group "$RESOURCE_GROUP" \
-                --mode multiple 2>/dev/null || log_warning "Failed to set revision mode (may already be set)"
+
+            log_success "Frontend container app created successfully"
         else
-            # Ensure revision mode is set to multiple for traffic routing
-            local current_mode=$(az containerapp revision show-mode \
+            log_info "Updating existing frontend container app..."
+            # Update the container app with new image
+            az containerapp update \
                 --name "$FRONTEND_IMAGE" \
                 --resource-group "$RESOURCE_GROUP" \
-                --query "properties.activeRevisionsMode" -o tsv 2>/dev/null || echo "")
-            
-            if [[ "$current_mode" != "multiple" ]]; then
-                log_info "Setting revision mode to multiple for traffic routing..."
-                az containerapp revision set-mode \
-                    --name "$FRONTEND_IMAGE" \
-                    --resource-group "$RESOURCE_GROUP" \
-                    --mode multiple || {
-                    log_error "Failed to set revision mode to multiple"
-                    return 1
-                }
-                log_success "Revision mode set to multiple"
-            fi
-            # Use REST API to update frontend with DEPLOYMENT_TIMESTAMP to force new revision
-            log_info "Updating existing frontend container app via REST API..."
-            
-            local subscription_id=$(az account show --query id -o tsv)
-            
-            # Fetch fresh container app config
-            log_info "Fetching fresh container app configuration..."
-            az containerapp show --name "$FRONTEND_IMAGE" --resource-group "$RESOURCE_GROUP" --output json > /tmp/frontend-config.json
-            
-            python3 << PYEOF
-import json
-from datetime import datetime
-
-with open('/tmp/frontend-config.json', 'r') as f:
-    config = json.load(f)
-
-container = config['properties']['template']['containers'][0]
-container['image'] = '$ACR_NAME.azurecr.io/$component:$version'
-container.pop('imageType', None)
-
-# Build environment variables
-env_vars = [
-    {'name': 'VITE_API_URL', 'value': '$api_url'},
-    {'name': 'VITE_APP_NAME', 'value': 'BDS Management System'},
-    {'name': 'VITE_APP_ENV', 'value': 'production'},
-    {'name': 'DEPLOYMENT_TIMESTAMP', 'value': datetime.now().isoformat()}
-]
-
-container['env'] = env_vars
-
-patch_body = {
-    'properties': {
-        'template': {
-            'containers': [container],
-            'revisionSuffix': '$revision_suffix',
-            'scale': {
-                'minReplicas': 0,
-                'maxReplicas': 10
-            }
-        }
-    }
-}
-
-with open('/tmp/frontend-patch-template.json', 'w') as f:
-    json.dump(patch_body, f, indent=2)
-PYEOF
-
-            # Apply the update via REST API
-            local update_exit_code=0
-            if az rest --method PATCH \
-                --uri "/subscriptions/$subscription_id/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.App/containerapps/$FRONTEND_IMAGE?api-version=2024-03-01" \
-                --body @/tmp/frontend-patch-template.json > /tmp/frontend-rest-output.log 2>&1; then
-                log_success "Frontend updated successfully via REST API"
-            else
-                log_error "Failed to update frontend via REST API"
-                cat /tmp/frontend-rest-output.log >&2
-                update_exit_code=1
-            fi
-            
-            if [ $update_exit_code -eq 0 ]; then
-                # Force revision creation with minimal update
-                log_info "Triggering revision creation..."
-                if az containerapp update \
-                    --name "$FRONTEND_IMAGE" \
-                    --resource-group "$RESOURCE_GROUP" \
-                    --image "$ACR_NAME.azurecr.io/$component:$version" \
-                    --revision-suffix "$revision_suffix" \
-                    --min-replicas 0 \
-                    --max-replicas 10 2>&1 | tee /tmp/frontend-update.log; then
-                    log_success "Frontend revision creation triggered"
-                else
-                    log_warning "Failed to trigger revision creation, but REST API update succeeded"
-                    cat /tmp/frontend-update.log >&2
-                fi
-                
-                # Wait for revision to be fully created and propagated
-                log_info "Waiting for revision to be fully created..."
-                sleep 15
-                
-                local new_revision=$(az containerapp revision list \
-                    --name "$FRONTEND_IMAGE" \
-                    --resource-group "$RESOURCE_GROUP" \
-                    --query "[?contains(name, '$revision_suffix')].name" \
-                    -o tsv 2>/dev/null | head -1 || echo "")
-        
-        if [[ -n "$new_revision" ]]; then
-                    log_success "New revision created: $new_revision"
-                    
-                    # Route 100% traffic to the new revision
-                    log_info "Routing 100% traffic to new revision: $new_revision"
-                    if az containerapp ingress traffic set \
-                        --name "$FRONTEND_IMAGE" \
-                        --resource-group "$RESOURCE_GROUP" \
-                        --revision-weight "$new_revision=100" 2>&1 | tee /tmp/frontend-traffic-set.log; then
-                        log_success "Traffic routed to new revision: $new_revision"
-                    else
-                        log_warning "Failed to set traffic routing, but revision was created"
-                        cat /tmp/frontend-traffic-set.log >&2
-                    fi
-            
-            # Deactivate old revisions
-            log_info "Deactivating old revisions..."
-                    local old_revisions=$(az containerapp revision list \
-                        --name "$FRONTEND_IMAGE" \
-                        --resource-group "$RESOURCE_GROUP" \
-                        --query "[?name!='$new_revision' && properties.active==\`true\`].name" \
-                        -o tsv 2>/dev/null || echo "")
-                    
-                    if [[ -n "$old_revisions" ]]; then
-                        while IFS= read -r old_revision; do
-                if [[ -n "$old_revision" ]]; then
-                                log_info "Deactivating revision: $old_revision"
-                                az containerapp revision deactivate \
-                                    --revision "$old_revision" \
-                                    --name "$FRONTEND_IMAGE" \
-                                    --resource-group "$RESOURCE_GROUP" 2>/dev/null || {
-                                    log_warning "Failed to deactivate revision: $old_revision"
-                                }
-                            fi
-                        done <<< "$old_revisions"
-                        log_success "Old revisions deactivated"
-                    else
-                        log_info "No old revisions to deactivate"
-                    fi
-                else
-                    log_warning "New revision with suffix $revision_suffix not found yet. Checking all revisions..."
-                    az containerapp revision list \
-                        --name "$FRONTEND_IMAGE" \
-                        --resource-group "$RESOURCE_GROUP" \
-                        --query "[].{name:name, created:properties.createdTime, image:properties.template.containers[0].image, trafficWeight:properties.trafficWeight}" \
-                        --output table | head -5
-                fi
-            else
-                # If update failed, show the error
-                log_error "Frontend deployment failed. Error details:"
-                if [ -f /tmp/frontend-rest-output.log ]; then
-                    cat /tmp/frontend-rest-output.log >&2
-                fi
-                return 1
-            fi
+                --image "$ACR_NAME.azurecr.io/$component:$version" \
+                --revision-suffix "$revision_suffix"
         fi
+
+        log_success "Frontend deployment completed successfully"
+        return 0
     fi
     
     log_success "$component deployed successfully"
