@@ -27,9 +27,10 @@ export const signIn = async (email: string, password: string) => {
     
     // Store session data in localStorage
     localStorage.setItem('employee', JSON.stringify(data.user));
-    localStorage.setItem('session', JSON.stringify({ 
+    localStorage.setItem('token', data.access_token || 'local-session');
+    localStorage.setItem('session', JSON.stringify({
       access_token: data.access_token || 'local-session',
-      user: data.user 
+      user: data.user
     }));
     
     return { employee: data.user };
@@ -120,15 +121,17 @@ export const changePassword = async (currentPassword: string, newPassword: strin
 // Admin password management functions
 export const adminResetPasswordRandom = async (userId?: string, email?: string): Promise<{temporary_password: string}> => {
   try {
-    // Use different tokens for different environments
-    const isLocal = API_BASE.includes('localhost') || API_BASE.includes('127.0.0.1');
-    const adminToken = isLocal ? 'local-dev-admin-token-12345' : 'your-admin-token-here';
+    // Use the current user's JWT token for authentication
+    const userToken = localStorage.getItem('token');
+    if (!userToken) {
+      throw new Error('Authentication required. Please log in again.');
+    }
 
     const response = await fetch(`${API_BASE}/api/v1/auth/admin/reset-password-random`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Admin-Token': adminToken
+        'Authorization': `Bearer ${userToken}`
       },
       body: JSON.stringify({
         user_id: userId,
@@ -154,14 +157,17 @@ export const adminResetPasswordRandom = async (userId?: string, email?: string):
 
 export const adminSetPassword = async (newPassword: string, userId?: string, email?: string): Promise<void> => {
   try {
-    const isLocal = API_BASE.includes('localhost') || API_BASE.includes('127.0.0.1');
-    const adminToken = isLocal ? 'local-dev-admin-token-12345' : 'your-admin-token-here';
+    // Use the current user's JWT token for authentication
+    const userToken = localStorage.getItem('token');
+    if (!userToken) {
+      throw new Error('Authentication required. Please log in again.');
+    }
 
     const response = await fetch(`${API_BASE}/api/v1/auth/admin/set-password`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Admin-Token': adminToken
+        'Authorization': `Bearer ${userToken}`
       },
       body: JSON.stringify({
         user_id: userId,

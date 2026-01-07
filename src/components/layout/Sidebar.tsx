@@ -10,8 +10,8 @@ import {
   SidebarMenuItem
 } from "@/components/ui/sidebar";
 
-import { 
-  Home, 
+import {
+  Home,
   ClipboardList,
   Users,
   Building2,
@@ -23,47 +23,69 @@ import {
   BarChart3,
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
+import { useAuth } from "@/hooks/use-auth";
 
-const menuItems = [
+const allMenuItems = [
   {
     title: "Dashboard",
     icon: Home,
-    path: "/"
+    path: "/",
+    adminOnly: false
   },
   {
     title: "Tasks",
     icon: ClipboardList,
-    path: "/tasks"
+    path: "/tasks",
+    adminOnly: false
   },
   {
     title: "Calendar",
     icon: CalendarIcon,
-    path: "/calendar"
+    path: "/calendar",
+    adminOnly: false
   },
   {
     title: "Users",
     icon: Users,
-    path: "/users"
+    path: "/users",
+    managerOrAdminOnly: true
   },
   {
     title: "Departments",
     icon: Building2,
-    path: "/departments"
+    path: "/departments",
+    managerOrAdminOnly: true
   },
   {
     title: "Positions",
     icon: Building2,
-    path: "/positions"
+    path: "/positions",
+    managerOrAdminOnly: true
   },
   {
     title: "Department Summary",
     icon: BarChart3,
-    path: "/department-summary"
+    path: "/department-summary",
+    adminOnly: false
   }
 ];
 
 export function AppSidebar() {
   const location = useLocation();
+  const { user } = useAuth();
+
+  // Get user role for filtering
+  const employee = user as any;
+  const userRole = employee?.role?.toLowerCase();
+  const isAdmin = userRole === 'admin' || userRole === 'superadmin';
+  const isManagerOrAdmin = userRole === 'manager' || userRole === 'admin' || userRole === 'superadmin';
+
+  // Filter menu items based on user role
+  const menuItems = allMenuItems.filter(item => {
+    if (item.adminOnly) return isAdmin;
+    if (item.managerOrAdminOnly) return isManagerOrAdmin;
+    return true;
+  });
   
   return (
     <ShadcnSidebar>

@@ -36,7 +36,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
   const isPreviewMode = new URLSearchParams(location.search).get('preview') === 'true';
-  
+
   // Check for employee in localStorage as a fallback when useAuth() doesn't work
   const employeeData = localStorage.getItem('employee');
   const hasEmployee = Boolean(employeeData);
@@ -53,6 +53,70 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   if ((!user && !hasEmployee) && !isPreviewMode) {
     console.log("No auth detected, redirecting to login");
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  return <>{children}</>;
+};
+
+const AdminProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const { isAdmin, user, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // First ensure user is authenticated
+  const employeeData = localStorage.getItem('employee');
+  const hasEmployee = Boolean(employeeData);
+
+  if ((!user && !hasEmployee)) {
+    console.log("No auth detected, redirecting to login");
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  // Then check if user is admin
+  if (!isAdmin) {
+    console.log("Non-admin user attempting to access admin page, redirecting to dashboard");
+    return <Navigate to="/" replace />;
+  }
+
+  return <>{children}</>;
+};
+
+const ManagerOrAdminProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // First ensure user is authenticated
+  const employeeData = localStorage.getItem('employee');
+  const hasEmployee = Boolean(employeeData);
+
+  if ((!user && !hasEmployee)) {
+    console.log("No auth detected, redirecting to login");
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  // Check if user has manager, admin, or superadmin role
+  const employee = user as any;
+  const userRole = employee?.role?.toLowerCase();
+  const isManagerOrAdmin = userRole === 'manager' || userRole === 'admin' || userRole === 'superadmin';
+
+  if (!isManagerOrAdmin) {
+    console.log("Insufficient privileges, redirecting to dashboard");
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;
@@ -126,35 +190,47 @@ export const AppRoutes = () => {
       } />
       
       {[
-        { path: "/tasks", element: <Tasks /> },
-        { path: "/calendar", element: <CalendarPage /> },
-        { path: "/documents", element: <Documents /> },
-        { path: "/non-conformances", element: <NonConformances /> },
-        { path: "/audits", element: <Audits /> },
-        { path: "/analytics", element: <Analytics /> },
-        { path: "/users", element: <Users /> },
-        { path: "/departments", element: <DepartmentsPage /> },
-        { path: "/positions", element: <PositionsPage /> },
-        { path: "/department-summary", element: <DepartmentSummary /> },
-        { path: "/mind-map/organization", element: <MindMapOrganization /> },
-        { path: "/mind-map/departments", element: <MindMapDepartments /> },
-        { path: "/mind-map/tasks", element: <MindMapTasks /> },
-        { path: "/mind-map/processes", element: <MindMapProcesses /> },
-        { path: "/profile", element: <Profile /> },
-        { path: "/help", element: <Help /> },
-        { path: "/email-test", element: <EmailTest /> }
-      ].map(({ path, element }) => (
+        { path: "/tasks", element: <Tasks />, adminOnly: false },
+        { path: "/calendar", element: <CalendarPage />, adminOnly: false },
+        { path: "/documents", element: <Documents />, adminOnly: false },
+        { path: "/non-conformances", element: <NonConformances />, adminOnly: false },
+        { path: "/audits", element: <Audits />, adminOnly: false },
+        { path: "/analytics", element: <Analytics />, adminOnly: false },
+        { path: "/users", element: <Users />, managerOrAdminOnly: true },
+        { path: "/departments", element: <DepartmentsPage />, managerOrAdminOnly: true },
+        { path: "/positions", element: <PositionsPage />, managerOrAdminOnly: true },
+        { path: "/department-summary", element: <DepartmentSummary />, adminOnly: false },
+        { path: "/mind-map/organization", element: <MindMapOrganization />, adminOnly: false },
+        { path: "/mind-map/departments", element: <MindMapDepartments />, adminOnly: false },
+        { path: "/mind-map/tasks", element: <MindMapTasks />, adminOnly: false },
+        { path: "/mind-map/processes", element: <MindMapProcesses />, adminOnly: false },
+        { path: "/profile", element: <Profile />, adminOnly: false },
+        { path: "/help", element: <Help />, adminOnly: false },
+        { path: "/email-test", element: <EmailTest />, adminOnly: true }
+      ].map(({ path, element, adminOnly, managerOrAdminOnly }) => (
         <Route key={path} path={path} element={
-          <ProtectedRoute>
-            <MainLayout>{element}</MainLayout>
-          </ProtectedRoute>
+          adminOnly ? (
+            <AdminProtectedRoute>
+              <MainLayout>{element}</MainLayout>
+            </AdminProtectedRoute>
+          ) : managerOrAdminOnly ? (
+            <ManagerOrAdminProtectedRoute>
+              <MainLayout>{element}</MainLayout>
+            </ManagerOrAdminProtectedRoute>
+          ) : (
+            <ProtectedRoute>
+              <MainLayout>{element}</MainLayout>
+            </ProtectedRoute>
+          )
         } />
       ))}
       
       <Route path="/invite-user" element={
-        <SuperAdminRoute>
-          <InviteUser />
-        </SuperAdminRoute>
+        <AdminProtectedRoute>
+          <MainLayout>
+            <InviteUser />
+          </MainLayout>
+        </AdminProtectedRoute>
       } />
       
       <Route path="*" element={<NotFound />} />

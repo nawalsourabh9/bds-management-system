@@ -1028,49 +1028,6 @@ export const fastapiService = {
     };
   },
 
-  async getUser(userId: string) {
-    const token = localStorage.getItem('token');
-    const response = await fetch(`${API_BASE}/api/v1/users/${userId}`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorMessage = `Get user failed: ${response.statusText}`;
-      try {
-        const errorData = JSON.parse(errorText);
-        errorMessage = errorData.detail || errorMessage;
-      } catch (e) {
-        // If not JSON, use the text as is
-        if (errorText) errorMessage = errorText;
-      }
-      const error = new Error(errorMessage);
-      (error as any).status = response.status;
-      throw error;
-    }
-    
-    return response.json();
-  },
-
-  async getPosition(positionId: string) {
-    const token = localStorage.getItem('token');
-    const response = await fetch(`${API_BASE}/api/v1/positions/${positionId}`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Get position failed: ${response.statusText}`);
-    }
-    
-    return response.json();
-  },
-
   async getPositionDepartments(positionId: string) {
     const token = localStorage.getItem('token');
     const response = await fetch(`${API_BASE}/api/v1/positions/${positionId}/departments`, {

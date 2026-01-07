@@ -2,6 +2,7 @@
 import { Button } from "@/components/ui/button";
 import { Edit, Trash, Key } from "lucide-react";
 import { Employee } from "../types";
+import { useAuth } from "@/hooks/use-auth";
 
 interface EmployeeListProps {
   employees: Employee[];
@@ -18,6 +19,10 @@ export function EmployeeList({
   setEmployeeToDelete,
   setIsDeleteDialogOpen
 }: EmployeeListProps) {
+  const { user } = useAuth();
+  const employee = user as any;
+  const userRole = employee?.role?.toLowerCase();
+  const isAdmin = userRole === 'admin' || userRole === 'superadmin';
   return (
     <div className="border-border">
       <table className="w-full border-collapse">
@@ -59,36 +64,42 @@ export function EmployeeList({
               </td>
               <td className="px-4 py-2">
                 <div className="flex space-x-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="excel-button h-8 w-8 p-0"
-                    onClick={() => openEditDialog(employee)}
-                    title="Edit employee details"
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="excel-button h-8 w-8 p-0 hover:bg-blue-100 hover:text-blue-600"
-                    onClick={() => openPasswordResetDialog(employee)}
-                    title="Reset password"
-                  >
-                    <Key className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="excel-button h-8 w-8 p-0 hover:bg-red-100 hover:text-red-600"
-                    onClick={() => {
-                      setEmployeeToDelete(employee.id);
-                      setIsDeleteDialogOpen(true);
-                    }}
-                    title="Delete employee"
-                  >
-                    <Trash className="h-4 w-4" />
-                  </Button>
+                  {isAdmin && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="excel-button h-8 w-8 p-0"
+                        onClick={() => openEditDialog(employee)}
+                        title="Edit employee details"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="excel-button h-8 w-8 p-0 hover:bg-blue-100 hover:text-blue-600"
+                        onClick={() => openPasswordResetDialog(employee)}
+                        title="Reset password"
+                      >
+                        <Key className="h-4 w-4" />
+                      </Button>
+                    </>
+                  )}
+                  {isAdmin && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="excel-button h-8 w-8 p-0 hover:bg-red-100 hover:text-red-600"
+                      onClick={() => {
+                        setEmployeeToDelete(employee.id);
+                        setIsDeleteDialogOpen(true);
+                      }}
+                      title="Delete employee"
+                    >
+                      <Trash className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </td>
             </tr>

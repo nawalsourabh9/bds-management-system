@@ -29,6 +29,13 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     DEBUG: bool = False
+
+    # Environment settings
+    ENVIRONMENT: str = "production"
+    DEV_MODE: bool = False
+
+    # Admin settings
+    ADMIN_RESET_TOKEN: str = ""
     
     # Database - BaseSettings will read from environment variables automatically
     DB_HOST: str = "localhost"

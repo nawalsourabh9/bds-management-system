@@ -6,6 +6,7 @@ import { useState } from "react";
 import { adminResetPasswordRandom, adminSetPassword, generateSecurePassword } from "@/services/auth-service";
 import { Employee } from "../types";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/use-auth";
 import { RefreshCw, Copy, CheckCircle } from "lucide-react";
 
 interface PasswordResetDialogProps {
@@ -16,11 +17,21 @@ interface PasswordResetDialogProps {
 }
 
 export function PasswordResetDialog({ isOpen, setIsOpen, employee, onPasswordReset }: PasswordResetDialogProps) {
+  const { user } = useAuth();
+  const currentUser = user as any;
+  const userRole = currentUser?.role?.toLowerCase();
+  const isAdmin = userRole === 'admin' || userRole === 'superadmin';
+
   const [isLoading, setIsLoading] = useState(false);
   const [resetMode, setResetMode] = useState<'auto' | 'manual'>('auto');
   const [manualPassword, setManualPassword] = useState('');
   const [generatedPassword, setGeneratedPassword] = useState('');
   const [copiedToClipboard, setCopiedToClipboard] = useState(false);
+
+  // Don't render if user is not admin
+  if (!isAdmin) {
+    return null;
+  }
 
   const handleGeneratePassword = async () => {
     try {

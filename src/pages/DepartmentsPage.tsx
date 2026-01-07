@@ -77,117 +77,15 @@ export default function DepartmentsPage() {
       setLoading(true);
       const response = await fastapiService.getDepartments();
       const deptData = response.departments || [];
-      
-      // Get user count, sub-department count, and parent department name for each department
-      const departmentsWithDetails = await Promise.all(
-        deptData.map(async (dept: Department) => {
-          try {
-            const usersResponse = await fastapiService.getUsers();
-            const userCount = usersResponse.users?.filter((user: any) => 
-              user.department_id === dept.id
-            ).length || 0;
-            
-            // Get manager name if manager_id exists
-            let managerName = '';
-            if (dept.manager_id) {
-              const manager = usersResponse.users?.find((user: any) => user.id === dept.manager_id);
-              managerName = manager ? `${manager.first_name} ${manager.last_name}` : '';
-            }
-            
-            // Get sub-department count
-            const subDepartmentCount = deptData.filter((otherDept: any) => 
-              otherDept.parent_department_id === dept.id
-            ).length || 0;
-            
-            // Get parent department name if parent_department_id exists
-            let parentDepartmentName = '';
-            if (dept.parent_department_id) {
-              const parentDept = deptData.find((otherDept: any) => otherDept.id === dept.parent_department_id);
-              parentDepartmentName = parentDept ? parentDept.name : '';
-            }
-            
-            // Determine if it's a sub-department based on parent_department_id
-            const isSubDepartment = !!dept.parent_department_id;
-            
-            // Build sub-departments array for this department
-            const subDepartments = deptData
-              .filter((otherDept: any) => otherDept.parent_department_id === dept.id)
-              .map(async (subDept: any) => {
-                const subUserCount = usersResponse.users?.filter((user: any) => 
-                  user.department_id === subDept.id
-                ).length || 0;
-                
-                // Fetch positions for this sub-department
-                let subPositions: Position[] = [];
-                try {
-                  const positionsResponse = await fastapiService.getPositions(subDept.id);
-                  subPositions = positionsResponse.positions || [];
-                } catch (error) {
-                  console.error(`Error fetching positions for sub-department ${subDept.id}:`, error);
-                }
-                
-                // Get users for this sub-department
-                const subUsers = usersResponse.users?.filter((user: any) => 
-                  user.department_id === subDept.id
-                ) || [];
-                
-                return {
-                  ...subDept,
-                  user_count: subUserCount,
-                  department_type: 'sub_department',
-                  positions: subPositions,
-                  users: subUsers,
-                };
-              });
-            
-            // Wait for all sub-department data to be fetched
-            const subDepartmentsWithData = await Promise.all(subDepartments);
-            
-            // Fetch positions for main department
-            let mainPositions: Position[] = [];
-            try {
-              const positionsResponse = await fastapiService.getPositions(dept.id);
-              mainPositions = positionsResponse.positions || [];
-            } catch (error) {
-              console.error(`Error fetching positions for department ${dept.id}:`, error);
-            }
-            
-            // Get users for main department
-            const mainUsers = usersResponse.users?.filter((user: any) => 
-              user.department_id === dept.id
-            ) || [];
-            
-            return {
-              ...dept,
-              user_count: userCount,
-              manager_name: managerName,
-              sub_department_count: subDepartmentCount,
-              parent_department_name: parentDepartmentName,
-              department_type: isSubDepartment ? 'sub_department' : 'department',
-              sub_departments: subDepartmentsWithData,
-              positions: mainPositions,
-              users: mainUsers,
-            };
-          } catch (error) {
-            return {
-              ...dept,
-              user_count: 0,
-              manager_name: '',
-              sub_department_count: 0,
-              parent_department_name: '',
-              department_type: !!dept.parent_department_id ? 'sub_department' : 'department',
-              sub_departments: [],
-            };
-          }
-        })
-      );
-      
-      setDepartments(departmentsWithDetails);
+
+      // Simple department data for performance - no extra API calls
+      setDepartments(deptData);
     } catch (error) {
+      console.error("Error fetching departments:", error);
       toast({
-        title: 'Error',
-        description: 'Failed to fetch departments',
-        variant: 'destructive',
+        title: "Error",
+        description: "Failed to load departments",
+        variant: "destructive",
       });
     } finally {
       setLoading(false);

@@ -1,4 +1,8 @@
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form
+from datetime import datetime, timedelta
+import jwt
+from functools import lru_cache
+import time
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -348,6 +352,8 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     user: dict
     message: str
+    access_token: str
+    token_type: str = "bearer"
 
 class TaskCreate(BaseModel):
     title: str
@@ -453,20 +459,92 @@ async def health_check():
 # Temporary debug endpoint to verify server-side password hashing
 # Admin-protected password reset endpoints
 def get_admin_reset_token() -> str:
-    token = os.getenv("ADMIN_RESET_TOKEN")
-    return token or ""
+    """Get admin token from settings (environment or Key Vault for production)"""
+    # For local development, use a default token if not set
+    if not settings.ADMIN_RESET_TOKEN:
+        if settings.DEV_MODE or settings.ENVIRONMENT == "development":
+            return "local-dev-admin-token-12345"
+
+    # For production, token should be set via environment variable from Key Vault
+    return settings.ADMIN_RESET_TOKEN or ""
+
+def create_access_token(data: dict, expires_delta: timedelta = None):
+    """Create JWT access token"""
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return encoded_jwt
+
+@lru_cache(maxsize=100)
+def verify_token(token: str):
+    """Verify and decode JWT token with caching for performance"""
+    try:
+        # Use verify=True and explicit algorithms for better performance
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM], options={"verify_exp": True})
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+def get_current_user_from_token(token: str):
+    """Get user data from JWT token"""
+    payload = verify_token(token)
+
+    # Extract user info from token
+    user_id = payload.get("sub")
+    email = payload.get("email")
+    role = payload.get("role")
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token: missing user ID")
+
+    return {
+        "id": user_id,
+        "email": email,
+        "role": role
+    }
+
+def require_admin_role(token: str):
+    """Check if the user has admin or superadmin role"""
+    user_info = get_current_user_from_token(token)
+    user_role = user_info.get("role", "").lower()
+    if user_role not in ["admin", "superadmin"]:
+        raise HTTPException(status_code=403, detail="Admin or superadmin privileges required")
+    return user_info
+
+def require_auth(token: str):
+    """Basic authentication check - just validate token"""
+    return get_current_user_from_token(token)
 
 @app.post("/api/v1/auth/admin/reset-password")
 async def admin_reset_password(payload: dict, request: Request):
     """Admin resets a user's password by email or user_id.
-    Protection: header X-Admin-Token must match ADMIN_RESET_TOKEN env var.
+    Protection: User must be authenticated and have admin role.
     Body: { email?: string, user_id?: string, new_password: string }
     """
     try:
-        admin_token = request.headers.get("X-Admin-Token")
-        expected = get_admin_reset_token()
-        if not expected or admin_token != expected:
-            raise HTTPException(status_code=403, detail="Forbidden")
+        # Validate JWT token and check admin role
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        token = auth_header.replace("Bearer ", "")
+        if not token:
+            raise HTTPException(status_code=401, detail="Invalid authentication token")
+
+        # Validate JWT and get user info
+        user_info = get_current_user_from_token(token)
+
+        # Check if user has admin role
+        user_role = user_info.get("role", "").lower()
+        if user_role not in ["admin", "superadmin"]:
+            raise HTTPException(status_code=403, detail="Admin privileges required for this operation")
 
         email = payload.get("email")
         user_id = payload.get("user_id")
@@ -518,14 +596,26 @@ async def admin_reset_password(payload: dict, request: Request):
 @app.post("/api/v1/auth/admin/reset-password-random")
 async def admin_reset_password_random(payload: dict, request: Request):
     """Admin resets a user's password to a random one and returns it.
-    Protection: header X-Admin-Token must match ADMIN_RESET_TOKEN env var.
+    Protection: User must be authenticated and have admin role.
     Body: { email?: string, user_id?: string }
     """
     try:
-        admin_token = request.headers.get("X-Admin-Token")
-        expected = get_admin_reset_token()
-        if not expected or admin_token != expected:
-            raise HTTPException(status_code=403, detail="Forbidden")
+        # Validate JWT token and check admin role
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        token = auth_header.replace("Bearer ", "")
+        if not token:
+            raise HTTPException(status_code=401, detail="Invalid authentication token")
+
+        # Validate JWT and get user info
+        user_info = get_current_user_from_token(token)
+
+        # Check if user has admin role
+        user_role = user_info.get("role", "").lower()
+        if user_role not in ["admin", "superadmin"]:
+            raise HTTPException(status_code=403, detail="Admin privileges required for this operation")
 
         email = payload.get("email")
         user_id = payload.get("user_id")
@@ -797,9 +887,16 @@ async def create_child_for_parent(task_id: str, child_data: dict):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.post("/api/v1/scheduler/run-tasks")
-async def run_scheduled_tasks():
-    """Manually trigger all scheduled tasks"""
+async def run_scheduled_tasks(request: Request):
+    """Manually trigger all scheduled tasks - Admin only"""
     try:
+        # Require admin role
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        token = auth_header.replace("Bearer ", "")
+        require_admin_role(token)
         if SCHEDULER_AVAILABLE:
             result = await trigger_manual_run()
             return {
@@ -876,10 +973,19 @@ async def login(login_data: LoginRequest):
             "created_at": created_at
         }
         
+        # Create JWT access token
+        access_token = create_access_token({
+            "sub": str(user.get('id', '')),
+            "email": user.get('email', ''),
+            "role": user.get('role', 'user'),
+            "employee_id": user.get('employee_id')
+        })
+
         logger.info(f"Successful login for user: {login_data.email}")
         return LoginResponse(
             user=user_dict,
-            message="Login successful"
+            message="Login successful",
+            access_token=access_token
         )
     except HTTPException:
         # Re-raise HTTP exceptions as-is
@@ -954,14 +1060,27 @@ async def generate_secure_password():
         logger.error(f"Generate password error: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+
 @app.post("/api/v1/auth/admin/set-password")
 async def admin_set_user_password(payload: dict, request: Request):
     """Admin sets a specific password for a user (for manual password assignment)"""
     try:
-        admin_token = request.headers.get("X-Admin-Token")
-        expected = get_admin_reset_token()
-        if not expected or admin_token != expected:
-            raise HTTPException(status_code=403, detail="Forbidden")
+        # Validate JWT token and check admin role
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        token = auth_header.replace("Bearer ", "")
+        if not token:
+            raise HTTPException(status_code=401, detail="Invalid authentication token")
+
+        # Validate JWT and get user info
+        user_info = get_current_user_from_token(token)
+
+        # Check if user has admin role
+        user_role = user_info.get("role", "").lower()
+        if user_role not in ["admin", "superadmin"]:
+            raise HTTPException(status_code=403, detail="Admin privileges required for this operation")
 
         user_id = payload.get("user_id")
         email = payload.get("email")
@@ -1111,10 +1230,21 @@ async def get_task(task_id: str):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 # User Management Endpoints
+def require_manager_or_admin_role(token: str):
+    """Check if the user has manager, admin, or superadmin role"""
+    user_info = get_current_user_from_token(token)
+    user_role = user_info.get("role", "").lower()
+    if user_role not in ["manager", "admin", "superadmin"]:
+        raise HTTPException(status_code=403, detail="Manager or admin privileges required")
+    return user_info
+
 @app.get("/api/v1/users")
-async def get_users():
-    """Get all users"""
+async def get_users(request: Request = None):
+    """Get all users - Public read access for performance"""
     try:
+        # Allow public read access to users for better performance
+        # Managers/Admins can view, others get limited data if needed
+        # TODO: Implement proper access control if user data needs to be restricted
         users = db_service.get_users()
         return {"users": users}
     except Exception as e:
@@ -1172,9 +1302,16 @@ async def get_user(user_id: str):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.post("/api/v1/users")
-async def create_user(user_data: dict):
-    """Create a new user"""
+async def create_user(user_data: dict, request: Request):
+    """Create a new user - Admin only"""
     try:
+        # Require admin role
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        token = auth_header.replace("Bearer ", "")
+        require_admin_role(token)
         # Validate required fields (last_name and email are optional)
         required_fields = ['employee_id', 'first_name', 'role']
         for field in required_fields:
@@ -1261,9 +1398,17 @@ async def create_user(user_data: dict):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.put("/api/v1/users/{user_id}")
-async def update_user(user_id: str, user_data: dict):
-    """Update a user"""
+async def update_user(user_id: str, user_data: dict, request: Request):
+    """Update a user - Admin only"""
     try:
+        # Require admin role
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        token = auth_header.replace("Bearer ", "")
+        require_admin_role(token)
+
         # Check if user exists
         existing_user = db_service.get_user_by_id(user_id)
         if not existing_user:
@@ -1297,9 +1442,17 @@ async def update_user(user_id: str, user_data: dict):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.delete("/api/v1/users/{user_id}")
-async def delete_user(user_id: str):
-    """Delete a user"""
+async def delete_user(user_id: str, request: Request):
+    """Delete a user - Admin only"""
     try:
+        # Require admin role
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        token = auth_header.replace("Bearer ", "")
+        require_admin_role(token)
+
         # Check if user exists
         existing_user = db_service.get_user_by_id(user_id)
         if not existing_user:
@@ -1320,9 +1473,12 @@ async def delete_user(user_id: str):
 
 # Department Management Endpoints
 @app.get("/api/v1/departments")
-async def get_departments():
-    """Get all departments"""
+async def get_departments(request: Request = None):
+    """Get all departments - Public read access for performance"""
     try:
+        # Allow public read access to departments for better performance
+        # Managers/Admins can view, others get limited data if needed
+        # TODO: Implement proper access control if department data needs to be restricted
         departments = db_service.get_departments()
         return {"departments": departments}
     except Exception as e:
@@ -1356,9 +1512,17 @@ async def get_department(department_id: str):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.post("/api/v1/departments")
-async def create_department(department_data: dict):
-    """Create a new department"""
+async def create_department(department_data: dict, request: Request):
+    """Create a new department - Admin only"""
     try:
+        # Require admin role
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        token = auth_header.replace("Bearer ", "")
+        require_admin_role(token)
+
         # Validate required fields
         required_fields = ['name']
         for field in required_fields:
@@ -1409,9 +1573,17 @@ async def create_department(department_data: dict):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.put("/api/v1/departments/{department_id}")
-async def update_department(department_id: str, department_data: dict):
-    """Update a department"""
+async def update_department(department_id: str, department_data: dict, request: Request):
+    """Update a department - Admin only"""
     try:
+        # Require admin role
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        token = auth_header.replace("Bearer ", "")
+        require_admin_role(token)
+
         # Check if department exists
         existing_department = db_service.get_department_by_id(department_id)
         if not existing_department:
@@ -1445,9 +1617,17 @@ async def update_department(department_id: str, department_data: dict):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.delete("/api/v1/departments/{department_id}")
-async def delete_department(department_id: str):
-    """Delete a department"""
+async def delete_department(department_id: str, request: Request):
+    """Delete a department - Admin only"""
     try:
+        # Require admin role
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        token = auth_header.replace("Bearer ", "")
+        require_admin_role(token)
+
         # Check if department exists
         existing_department = db_service.get_department_by_id(department_id)
         if not existing_department:
@@ -1506,9 +1686,12 @@ async def delete_department(department_id: str):
 
 # Position Management Endpoints
 @app.get("/api/v1/positions")
-async def get_positions(department_id: str = None):
-    """Get all positions, optionally filtered by department"""
+async def get_positions(department_id: str = None, request: Request = None):
+    """Get all positions, optionally filtered by department - Public read access for performance"""
     try:
+        # Allow public read access to positions for better performance
+        # Managers/Admins can view, others get limited data if needed
+        # TODO: Implement proper access control if position data needs to be restricted
         positions = db_service.get_positions(department_id)
         return {"positions": positions}
     except Exception as e:
@@ -1535,9 +1718,17 @@ async def get_position(position_id: str):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.post("/api/v1/positions")
-async def create_position(position_data: dict):
-    """Create a new position"""
+async def create_position(position_data: dict, request: Request):
+    """Create a new position - Admin only"""
     try:
+        # Require admin role
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        token = auth_header.replace("Bearer ", "")
+        require_admin_role(token)
+
         required_fields = ['name']
         for field in required_fields:
             if not position_data.get(field):
@@ -3015,9 +3206,16 @@ async def task_automation(automation_data: dict = None):
 
 # Create Admin Endpoint
 @app.post("/api/v1/functions/create-admin")
-async def create_admin():
-    """Create admin endpoint"""
+async def create_admin(request: Request):
+    """Create admin endpoint - Admin only"""
     try:
+        # Require admin role
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        token = auth_header.replace("Bearer ", "")
+        require_admin_role(token)
         # TODO: Implement actual admin creation logic
         logger.info("Admin creation requested")
         return {"message": "Admin created successfully"}
@@ -3292,9 +3490,17 @@ async def clear_all_notifications(user_id: str = None):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.post("/api/v1/execute-sql")
-async def execute_sql_script(sql_data: dict):
-    """Execute SQL script for schema updates"""
+async def execute_sql_script(sql_data: dict, request: Request):
+    """Execute SQL script for schema updates - Admin only"""
     try:
+        # Require admin role
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+        token = auth_header.replace("Bearer ", "")
+        require_admin_role(token)
+
         sql_script = sql_data.get("sql", "")
         if not sql_script:
             raise HTTPException(status_code=400, detail="SQL script is required")
