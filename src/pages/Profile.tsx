@@ -86,7 +86,10 @@ export default function Profile() {
     const userId = (employee as any)?.id || (user as any)?.id || (user as any)?.employee?.id;
     const employeeId = (employee as any)?.employee_id || (user as any)?.employee_id;
     
-    console.log("Profile - userId:", userId, "employeeId:", employeeId, "employee:", employee, "user:", user);
+    // Only log in development - never expose sensitive user data in production
+    if (process.env.NODE_ENV === 'development') {
+      console.log("Profile - userId:", userId, "employeeId:", employeeId);
+    }
     
     if (!userId && !employeeId) {
       console.warn("No user ID or employee ID found");

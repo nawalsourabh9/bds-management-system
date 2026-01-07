@@ -31,7 +31,10 @@ export function EditEmployeeDialog({ isOpen, setIsOpen, employee, onSubmit, empl
   // Reset form when employee changes
   useEffect(() => {
     if (employee) {
-      console.log("Setting form values with:", { ...employee });
+      // Only log in development - never expose employee data in production
+      if (process.env.NODE_ENV === 'development') {
+        console.log("Setting form values for employee:", employee.id);
+      }
       form.reset({
         name: employee.name,
         email: employee.email,
@@ -47,7 +50,10 @@ export function EditEmployeeDialog({ isOpen, setIsOpen, employee, onSubmit, empl
   }, [employee, form]);
 
   const handleSubmit = (data: Omit<Employee, "id">) => {
-    console.log("Submitting form with data:", data);
+    // Only log in development - never expose form data in production
+    if (process.env.NODE_ENV === 'development') {
+      console.log("Submitting employee form update");
+    }
     onSubmit(data);
   };
 

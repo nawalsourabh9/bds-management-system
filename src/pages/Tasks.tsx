@@ -17,8 +17,10 @@ const Tasks = () => {
   const taskIdFromUrl = searchParams.get('taskId');
   const filterFromUrl = searchParams.get('filter');
   
-  console.log("Current user role:", employee?.role);
-  console.log("Is admin?", isAdmin);
+  // Only log in development environment
+  if (process.env.NODE_ENV === 'development') {
+    console.log("Current user role:", employee?.role, "Is admin?", isAdmin);
+  }
 
   // Simplified permissions for all users - everyone can do everything
   const currentUserPermissions = {

@@ -77,13 +77,16 @@ class Settings(BaseSettings):
     
     # CORS
     CORS_ORIGINS: List[str] = [
-        "http://localhost:3000", 
-        "http://localhost:3001", 
-        "http://localhost:5173", 
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:5173",
         "http://localhost:3002",
         "http://192.168.29.12:3001",
         "http://192.168.29.12:3000",
         "http://192.168.29.12:5173",
+        # Custom domain origins
+        "https://eqms.nordictechdesign.com",
+        "https://api.eqms.nordictechdesign.com",
         "*"
     ]
     

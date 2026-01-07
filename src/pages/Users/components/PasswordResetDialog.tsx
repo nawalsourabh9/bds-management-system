@@ -1,4 +1,4 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -98,7 +98,9 @@ export function PasswordResetDialog({ isOpen, setIsOpen, employee, onPasswordRes
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>Reset Password for {employee?.name}</DialogTitle>
-          <p className="text-sm text-gray-600">Generate a new secure password or set a custom one for this user.</p>
+          <DialogDescription>
+            Generate a new secure password or set a custom one for this user.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">

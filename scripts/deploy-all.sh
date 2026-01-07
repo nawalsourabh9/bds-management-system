@@ -2,6 +2,7 @@
 
 # Comprehensive deployment script for BDS Management System
 # Handles both frontend and backend deployment with cross-platform support
+# Updated to use custom domain: https://eqms.nordictechdesign.com
 
 # Source platform utilities (if needed)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -592,23 +593,42 @@ build_image() {
     
     # Add build arguments for frontend
     if [ "$component" = "$FRONTEND_IMAGE" ]; then
-        # Get backend API URL from Key Vault
-        local backend_url=$(az keyvault secret show --vault-name "$KEYVAULT_NAME" --name "api-url" --query value -o tsv 2>/dev/null)
-        if [ -z "$backend_url" ]; then
-            # Dynamically retrieve backend URL from Azure Container Apps
-            backend_url=$(az containerapp show --name "$BACKEND_IMAGE" --resource-group "$RESOURCE_GROUP" --query "properties.configuration.ingress.fqdn" -o tsv 2>/dev/null)
-            if [ -z "$backend_url" ]; then
-                log_error "Failed to retrieve backend URL from Azure Container Apps"
-                return 1
+        # Try multiple sources for API URL with proper fallback
+        local api_url=""
+
+        # 1. First priority: Key Vault (custom domain URL)
+        log_info "Attempting to get API URL from Key Vault..."
+        api_url=$(az keyvault secret show --vault-name "$KEYVAULT_NAME" --name "api-url" --query value -o tsv 2>/dev/null)
+        if [ -n "$api_url" ]; then
+            log_success "Using API URL from Key Vault: $api_url"
+        else
+            log_warning "API URL not found in Key Vault, trying fallback sources..."
+
+            # 2. Second priority: Azure Container Apps URL (for backward compatibility)
+            log_info "Attempting to get API URL from Azure Container Apps..."
+            local azure_url=$(az containerapp show --name "$BACKEND_IMAGE" --resource-group "$RESOURCE_GROUP" --query "properties.configuration.ingress.fqdn" -o tsv 2>/dev/null)
+            if [ -n "$azure_url" ]; then
+                api_url="https://$azure_url"
+                log_success "Using Azure Container Apps URL: $api_url"
+            else
+                log_warning "Azure Container Apps URL not available, using hardcoded fallback..."
+
+                # 3. Final fallback: Hardcoded custom domain URL
+                api_url="https://api.eqms.nordictechdesign.com"
+                log_warning "Using hardcoded fallback URL: $api_url"
             fi
-            backend_url="https://$backend_url"
-            log_info "Retrieved backend URL dynamically: $backend_url"
         fi
 
-        build_cmd="$build_cmd --build-arg VITE_API_BASE_URL=$backend_url"
+        # Validate the API URL format
+        if [[ ! "$api_url" =~ ^https:// ]]; then
+            log_error "Invalid API URL format (missing https): $api_url"
+            return 1
+        fi
+
+        build_cmd="$build_cmd --build-arg VITE_API_BASE_URL=$api_url"
         build_cmd="$build_cmd --build-arg VITE_APP_NAME='BDS Management System'"
         build_cmd="$build_cmd --build-arg VITE_APP_ENV=production"
-        log_info "Adding frontend build arguments with backend URL from Key Vault: $backend_url"
+        log_info "Frontend will be built with API URL: $api_url"
     fi
     
     if [ -n "$dockerfile" ]; then
@@ -780,7 +800,8 @@ deploy_to_aca() {
                 "DB_PASSWORD=secretref:db-password" \
                 "DB_NAME=secretref:db-name" \
                 "DB_SSLMODE=require" \
-                "ENVIRONMENT=production" 2>/dev/null; then
+                "ENVIRONMENT=production" \
+                "BACKEND_URL=https://api.eqms.nordictechdesign.com" 2>/dev/null; then
             log_success "Key Vault secret references configured successfully"
         else
             log_warning "Key Vault references failed, falling back to direct environment variables"
@@ -807,7 +828,8 @@ deploy_to_aca() {
                     "DB_PASSWORD=$db_password" \
                     "DB_NAME=$db_name" \
                     "DB_SSLMODE=require" \
-                    "ENVIRONMENT=production"
+                    "ENVIRONMENT=production" \
+                    "BACKEND_URL=https://api.eqms.nordictechdesign.com"
 
             log_success "Direct environment variables configured as fallback"
         fi
@@ -815,27 +837,17 @@ deploy_to_aca() {
         log_success "Secure Key Vault integration completed!"
         log_info "Secrets are now resolved at runtime and never visible in container environment"
 
-        # Store backend API URL in Key Vault for frontend to use
-        local backend_url=$(az containerapp show \
-            --name "$BACKEND_IMAGE" \
-            --resource-group "$RESOURCE_GROUP" \
-            --query "properties.configuration.ingress.fqdn" \
-            --output tsv)
+        # Store custom domain API URL in Key Vault for frontend to use
+        local custom_api_url="https://api.eqms.nordictechdesign.com"
+        log_info "Storing custom domain API URL in Key Vault: $custom_api_url"
 
-        if [ -n "$backend_url" ]; then
-            backend_url="https://$backend_url"
-            log_info "Storing backend API URL in Key Vault: $backend_url"
+        # Store or update the custom domain API URL in Key Vault
+        az keyvault secret set \
+            --vault-name "$KEYVAULT_NAME" \
+            --name "api-url" \
+            --value "$custom_api_url" >/dev/null 2>&1
 
-            # Store or update the API URL in Key Vault
-            az keyvault secret set \
-                --vault-name "$KEYVAULT_NAME" \
-                --name "api-url" \
-                --value "$backend_url" >/dev/null 2>&1
-
-            log_success "Backend API URL stored in Key Vault for frontend use"
-        else
-            log_warning "Could not retrieve backend URL to store in Key Vault"
-        fi
+        log_success "Custom domain API URL stored in Key Vault for frontend use"
 
         log_success "Backend deployment completed successfully"
         return 0
@@ -1205,8 +1217,16 @@ main() {
   # Final status
   if [ $exit_code -eq 0 ]; then
     log_success "All deployments completed successfully!"
+    log_info "Your application is now available at:"
+    echo "  🌐 Frontend: https://eqms.nordictechdesign.com"
+    echo "  🔗 Backend API: https://api.eqms.nordictechdesign.com"
+    echo ""
     log_info "Check deployment status with:"
     echo "  az containerapp list --resource-group $RESOURCE_GROUP --output table"
+    echo ""
+    log_info "Test your custom domains:"
+    echo "  curl -I https://eqms.nordictechdesign.com"
+    echo "  curl https://api.eqms.nordictechdesign.com/health"
   else
     log_error "Some deployments failed"
   fi
