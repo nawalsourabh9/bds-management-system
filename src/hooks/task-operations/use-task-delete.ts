@@ -1,8 +1,9 @@
 
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
+
+import { API_BASE, API_ENDPOINTS } from '@/config/api';
 
 export const useTaskDelete = () => {
   const [isDeleting, setIsDeleting] = useState(false);
@@ -15,14 +16,14 @@ export const useTaskDelete = () => {
       setIsDeleting(true);
       console.log(`Attempting to delete task with ID: ${taskId}`);
       
-      // Delete task from database
-      const { error } = await supabase
-        .from('tasks')
-        .delete()
-        .eq('id', taskId);
+      // Delete task from FastAPI backend
+      const response = await fetch(`${API_BASE}/api/v1/tasks/${taskId}`, {
+        method: 'DELETE',
+      });
 
-      if (error) {
-        console.error("Error deleting task:", error);
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("Error deleting task:", errorData);
         toast.error("Failed to delete task");
         return false;
       }

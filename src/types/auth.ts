@@ -1,17 +1,15 @@
 
-import { Session, User } from '@supabase/supabase-js';
-
 export type ApprovalRecord = {
   id: string;
   user_id: string;
-  email: string;
+  email: string | null; // Email is now optional
   status: string;
   created_at: string;
 };
 
 export type EmployeeData = {
   id: string;
-  email: string;
+  email: string | null; // Email is now optional
   name: string;
   employee_id: string;
   department: string;
@@ -25,12 +23,12 @@ export type EmployeeData = {
 };
 
 export type AuthContextType = {
-  session: Session | null;
-  user: User | null | EmployeeData;
+  session: any | null;
+  user: any | null | EmployeeData;
   signIn: (email: string, password: string) => Promise<{ employee: EmployeeData }>;
   signUp: (email: string, password: string, userData?: any) => Promise<{
-    user: User | null;
-    session: Session | null;
+    user: any | null;
+    session: any | null;
   } | {
     user: null;
     session: null;

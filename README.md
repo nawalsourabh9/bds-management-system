@@ -1,72 +1,190 @@
 
-# BDS Management System
+# Nordic Design E-QMS
 
-## Project info
+A comprehensive electronic quality management system designed for Nordic Design with real-time status updates, and Azure integration.
 
-**URL**: https://lovable.dev/projects/5c3ae1e7-9534-4be6-acc3-da1f4f5ebc23
+## 🚀 Quick Start
 
-## How can I edit this code?
+### Prerequisites
+- Docker & Docker Compose
+- Node.js (v18+) & npm
+- Azure CLI (for cloud deployment)
 
-**Use Lovable**
+### Setup Options
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/5c3ae1e7-9534-4be6-acc3-da1f4f5ebc23) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+**Option 1: Complete Setup (Recommended)**
+```bash
+chmod +x setup.sh
+./setup.sh
+# Choose option 1 for complete setup
 ```
 
-**Edit a file directly in GitHub**
+**Option 2: Individual Components**
+```bash
+# Database only
+./scripts/setup-docker.sh
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+# Azure deployment
+./scripts/setup-azure.sh
 
-**Use GitHub Codespaces**
+# Complete local setup
+./scripts/setup-complete.sh
+```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## 📊 System Overview
 
-## What technologies are used for this project?
+### Database Structure
+- **Users**: 30+ users with Indian names
+- **Departments**: 8 manufacturing departments
+- **Tasks**: 10+ status types, 6 priority levels
+- **Real-time Updates**: Status changes tracked automatically
 
-This project is built with:
+### User Roles
+- **SuperAdmin**: `admin@bdsmanufacturing.in` (Full system access)
+- **Admin**: `sourabh.nawal@bdsmanufacturing.in` (Department management)
+- **Manager**: Department heads (Team management)
+- **Supervisor**: Task oversight
+- **User**: Basic task operations
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+### Task Statuses
+- `not-started` → `pending` → `in-progress` → `completed`
+- `under-review` → `on-hold` → `blocked` → `waiting-for-approval`
+- `overdue` → `cancelled`
 
-## How can I deploy this project?
+### Priorities
+- `low` → `medium` → `high` → `urgent` → `critical` → `emergency`
 
-Simply open [Lovable](https://lovable.dev/projects/5c3ae1e7-9534-4be6-acc3-da1f4f5ebc23) and click on Share -> Publish.
+## 🏗️ Architecture
 
-## Can I connect a custom domain to my Lovable project?
+```
+BDS Management System/
+├── scripts/                 # All setup and utility scripts
+│   ├── setup-complete.sh   # Complete local setup
+│   ├── setup-docker.sh     # Database setup only
+│   ├── setup-azure.sh      # Azure deployment
+│   └── ...
+├── database/               # Database schema and seed data
+│   └── schema/
+│       ├── 01-bds_schema.sql
+│       └── 02-seed_data.sql
+├── src/                    # Frontend React application
+├── backend/                # Backend API (created by setup)
+├── docker-compose.yml      # Docker services
+└── setup.sh               # Main setup script
+```
 
-Yes it is!
+## 🔧 Access Information
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+### Local Development
+- **Frontend**: http://localhost:5173
+- **Backend API**: http://localhost:3001
+- **PostgreSQL**: localhost:5432
+- **PgAdmin**: http://localhost:8080
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+### Test Users (Password: admin123)
+- **SuperAdmin**: `admin@bdsmanufacturing.in`
+- **Admin**: `sourabh.nawal@bdsmanufacturing.in`
+- **Quality Manager**: `priya.sharma@bdsmanufacturing.in`
+- **Production Manager**: `rajesh.kumar@bdsmanufacturing.in`
+
+### API Endpoints
+- Health Check: `GET /api/health`
+- Users: `GET /api/users`
+- Tasks: `GET /api/tasks`
+
+## 🎯 Key Features
+
+### ✅ Real-Time Status Updates
+- Frontend can update all task statuses dynamically
+- Status badges with icons and colors
+- Comprehensive status update dialog
+
+### ✅ BDS Manufacturing Data
+- Indian names and manufacturing departments
+- Quality Assurance, Production, R&D, Supply Chain
+- Real manufacturing tasks and workflows
+
+### ✅ Azure Integration Ready
+- Azure PostgreSQL setup script
+- Azure CLI automation
+- Cloud deployment ready
+
+### ✅ Comprehensive Task Management
+- 10 different task statuses
+- 6 priority levels
+- Recurring tasks support
+- Customer-related tasks
+- Document attachments
+
+## 🚀 Deployment Options
+
+### Local Development
+```bash
+./setup.sh
+# Choose option 1 for complete local setup
+```
+
+### Azure Cloud
+```bash
+./setup.sh
+# Choose option 3 for Azure deployment
+```
+
+### Docker Only
+```bash
+./setup.sh
+# Choose option 2 for database only
+```
+
+## 📁 Scripts Overview
+
+| Script | Purpose |
+|--------|---------|
+| `setup-complete.sh` | Complete local setup (DB + Backend + Frontend) |
+| `setup-docker.sh` | Database setup with Docker |
+| `setup-azure.sh` | Azure PostgreSQL and cloud deployment |
+| `setup-database.sh` | Database schema and seed data only |
+
+## 🔍 Testing the System
+
+1. **Login**: Use any test user with password `admin123`
+2. **Create Tasks**: Test task creation and assignment
+3. **Update Status**: Change task statuses using the frontend
+4. **View Dashboard**: Check different user roles and permissions
+5. **Database**: Use PgAdmin to inspect the database
+
+## 🛠️ Development
+
+### Frontend Components
+- Enhanced `StatusBadge` with 10 status types
+- Enhanced `PriorityBadge` with 6 priority levels
+- `StatusUpdateDialog` for real-time updates
+- All components support dynamic status changes
+
+### Backend API
+- Express.js server with PostgreSQL
+- RESTful endpoints for users and tasks
+- Database connection with connection pooling
+
+### Database
+- PostgreSQL 17 with comprehensive schema
+- BDS manufacturing data with Indian names
+- Audit trails and task history
+
+## 📞 Support
+
+For issues or questions:
+1. Check the database logs: `docker-compose logs postgres`
+2. Verify API endpoints: `curl http://localhost:3001/api/health`
+3. Check frontend: Open browser dev tools
+
+## 🎉 Ready to Use!
+
+The BDS Management System is now ready with:
+- ✅ Complete database with Indian names
+- ✅ Real-time status updates
+- ✅ Azure deployment ready
+- ✅ Clean, organized structure
+- ✅ Comprehensive documentation
+
+**Start with**: `./setup.sh` and choose option 1 for complete setup!

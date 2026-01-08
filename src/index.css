@@ -5,44 +5,45 @@
 
 @layer base {
   :root {
+    /* Apple-inspired color palette */
     --background: 0 0% 100%;
-    --foreground: 215 14% 20%;
+    --foreground: 220 13% 18%;
 
     --card: 0 0% 100%;
-    --card-foreground: 215 14% 20%;
+    --card-foreground: 220 13% 18%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 215 14% 20%;
+    --popover-foreground: 220 13% 18%;
 
-    --primary: 24 100% 50%;
+    --primary: 25 95% 53%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 0 0% 96%;
-    --secondary-foreground: 215 14% 20%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 220 13% 18%;
 
-    --muted: 0 0% 96%;
-    --muted-foreground: 215 14% 46%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
 
-    --accent: 24 100% 95%;
-    --accent-foreground: 24 90% 40%;
+    --accent: 25 95% 96%;
+    --accent-foreground: 25 95% 40%;
 
-    --destructive: 0 84.2% 60.2%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 0 0% 90%;
-    --input: 0 0% 90%;
-    --ring: 24 100% 50%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 25 95% 53%;
 
-    --radius: 0.25rem;
+    --radius: 0.75rem;
 
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 215 14% 20%;
-    --sidebar-primary: 24 100% 50%;
+    --sidebar-background: 220 14% 98%;
+    --sidebar-foreground: 220 13% 18%;
+    --sidebar-primary: 25 95% 53%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 24 100% 95%;
-    --sidebar-accent-foreground: 24 90% 40%;
-    --sidebar-border: 0 0% 90%;
-    --sidebar-ring: 24 100% 60%;
+    --sidebar-accent: 25 95% 96%;
+    --sidebar-accent-foreground: 25 95% 40%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 25 95% 60%;
   }
 
   .dark {
@@ -55,7 +56,7 @@
     --popover: 215 14% 16%;
     --popover-foreground: 0 0% 98%;
 
-    --primary: 24 95% 53%;
+    --primary: 25 95% 53%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 215 14% 20%;
@@ -65,23 +66,23 @@
     --muted-foreground: 215 14% 65%;
 
     --accent: 215 14% 22%;
-    --accent-foreground: 24 95% 53%;
+    --accent-foreground: 25 95% 53%;
 
     --destructive: 0 62.8% 40.6%;
     --destructive-foreground: 0 0% 98%;
 
     --border: 215 14% 25%;
     --input: 215 14% 25%;
-    --ring: 24 95% 53%;
+    --ring: 25 95% 53%;
 
     --sidebar-background: 215 14% 20%;
     --sidebar-foreground: 0 0% 98%;
-    --sidebar-primary: 24 95% 53%;
+    --sidebar-primary: 25 95% 53%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 215 14% 25%;
-    --sidebar-accent-foreground: 24 95% 53%;
+    --sidebar-accent-foreground: 25 95% 53%;
     --sidebar-border: 215 14% 25%;
-    --sidebar-ring: 24 95% 60%;
+    --sidebar-ring: 25 95% 60%;
   }
 }
 
@@ -95,8 +96,91 @@
   }
 }
 
-/* Excel-inspired styles */
+/* Enhanced Apple-inspired styles with animations */
 @layer components {
+  .apple-card {
+    @apply bg-white rounded-2xl shadow-sm border border-gray-100 p-6 transition-all duration-300 hover:shadow-lg hover:scale-[1.02];
+    backdrop-filter: blur(20px);
+  }
+  
+  .apple-button {
+    @apply bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-xl px-6 py-3 transition-all duration-200 shadow-sm hover:shadow-md hover:scale-105 active:scale-95;
+  }
+  
+  .apple-input {
+    @apply bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-200 hover:border-gray-300;
+  }
+  
+  .apple-select {
+    @apply bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-200 hover:border-gray-300;
+  }
+  
+  .apple-modal {
+    @apply bg-white rounded-2xl shadow-2xl border border-gray-100;
+    backdrop-filter: blur(20px);
+  }
+  
+  .apple-sidebar {
+    @apply bg-gray-50/80 backdrop-blur-xl border-r border-gray-200;
+  }
+  
+  /* Enhanced interactive elements */
+  .interactive-card {
+    @apply transition-all duration-300 hover:shadow-lg hover:scale-[1.02] cursor-pointer;
+  }
+  
+  .gradient-text {
+    @apply bg-gradient-to-r from-orange-600 to-orange-500 bg-clip-text text-transparent;
+  }
+  
+  .glass-effect {
+    @apply bg-white/80 backdrop-blur-xl border border-white/20;
+  }
+  
+  .floating-animation {
+    animation: float 6s ease-in-out infinite;
+  }
+  
+  .pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite alternate;
+  }
+  
+  /* Custom animations */
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+  }
+  
+  @keyframes pulse-glow {
+    0% { box-shadow: 0 0 5px rgba(249, 115, 22, 0.3); }
+    100% { box-shadow: 0 0 20px rgba(249, 115, 22, 0.6), 0 0 30px rgba(249, 115, 22, 0.4); }
+  }
+  
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  
+  /* Enhanced scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    @apply bg-gray-100 rounded-full;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    @apply bg-orange-300 rounded-full hover:bg-orange-400;
+  }
+  
+  /* Smooth transitions for all interactive elements */
+  * {
+    transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 150ms;
+  }
+  
   .excel-header {
     @apply bg-secondary border-b border-border px-3 py-1.5;
   }

@@ -23,7 +23,7 @@ export function EditEmployeeDialog({ isOpen, setIsOpen, employee, onSubmit, empl
       role: "",
       department: "",
       employeeId: "",
-      position: "",
+      position: undefined,
       status: "Active"
     }
   });
@@ -31,7 +31,10 @@ export function EditEmployeeDialog({ isOpen, setIsOpen, employee, onSubmit, empl
   // Reset form when employee changes
   useEffect(() => {
     if (employee) {
-      console.log("Setting form values with:", { ...employee });
+      // Only log in development - never expose employee data in production
+      if (process.env.NODE_ENV === 'development') {
+        console.log("Setting form values for employee:", employee.id);
+      }
       form.reset({
         name: employee.name,
         email: employee.email,
@@ -47,7 +50,10 @@ export function EditEmployeeDialog({ isOpen, setIsOpen, employee, onSubmit, empl
   }, [employee, form]);
 
   const handleSubmit = (data: Omit<Employee, "id">) => {
-    console.log("Submitting form with data:", data);
+    // Only log in development - never expose form data in production
+    if (process.env.NODE_ENV === 'development') {
+      console.log("Submitting employee form update");
+    }
     onSubmit(data);
   };
 
@@ -57,7 +63,7 @@ export function EditEmployeeDialog({ isOpen, setIsOpen, employee, onSubmit, empl
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Employee</DialogTitle>
         </DialogHeader>

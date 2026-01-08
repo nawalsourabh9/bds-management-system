@@ -5,15 +5,20 @@ import { toast } from "@/hooks/use-toast";
 import { EmployeeList } from "./components/EmployeeList";
 import { EditEmployeeDialog } from "./components/EditEmployeeDialog";
 import { DeleteEmployeeDialog } from "./components/DeleteEmployeeDialog";
+import { CreateUserDialog } from "./components/CreateUserDialog";
+import { PasswordResetDialog } from "./components/PasswordResetDialog";
 import { UsersHeader } from "./components/UsersHeader";
 import { useEmployees } from "./hooks/useEmployees";
 import { Employee } from "./types";
 
 const Users = () => {
-  const { employees, loading, updateEmployee, deleteEmployee } = useEmployees();
+  const { employees, loading, updateEmployee, deleteEmployee, refetch } = useEmployees();
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isPasswordResetDialogOpen, setIsPasswordResetDialogOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+  const [passwordResetEmployee, setPasswordResetEmployee] = useState<Employee | null>(null);
   const [employeeToDelete, setEmployeeToDelete] = useState<string | null>(null); // Changed from number to string
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -37,6 +42,11 @@ const Users = () => {
   const openEditDialog = (employee: Employee) => {
     setEditingEmployee(employee);
     setIsEditDialogOpen(true);
+  };
+
+  const openPasswordResetDialog = (employee: Employee) => {
+    setPasswordResetEmployee(employee);
+    setIsPasswordResetDialogOpen(true);
   };
 
   const handleDeleteEmployee = async () => {
@@ -71,11 +81,16 @@ const Users = () => {
       </div>
       
       <Card className="border-border">
-        <UsersHeader searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
+        <UsersHeader
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          onCreateUser={() => setIsCreateDialogOpen(true)}
+        />
         <CardContent className="p-0">
-          <EmployeeList 
+          <EmployeeList
             employees={filteredEmployees}
             openEditDialog={openEditDialog}
+            openPasswordResetDialog={openPasswordResetDialog}
             setEmployeeToDelete={setEmployeeToDelete}
             setIsDeleteDialogOpen={setIsDeleteDialogOpen}
           />
@@ -94,6 +109,19 @@ const Users = () => {
         isOpen={isDeleteDialogOpen}
         setIsOpen={setIsDeleteDialogOpen}
         onConfirm={handleDeleteEmployee}
+      />
+
+      <CreateUserDialog
+        isOpen={isCreateDialogOpen}
+        setIsOpen={setIsCreateDialogOpen}
+        onUserCreated={refetch}
+      />
+
+      <PasswordResetDialog
+        isOpen={isPasswordResetDialogOpen}
+        setIsOpen={setIsPasswordResetDialogOpen}
+        employee={passwordResetEmployee}
+        onPasswordReset={refetch}
       />
     </div>
   );

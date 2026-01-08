@@ -24,6 +24,8 @@ interface TaskFiltersProps {
   setAssigneeFilter: (assignee: string | null) => void;
   dueDateFilter: Date | null;
   setDueDateFilter: (date: Date | null) => void;
+  frequencyFilter: string | null;
+  setFrequencyFilter: (frequency: string | null) => void;
   departments: string[];
   teamMembers: TeamMember[];
 }
@@ -41,6 +43,8 @@ const TaskFilters = ({
   setAssigneeFilter,
   dueDateFilter,
   setDueDateFilter,
+  frequencyFilter,
+  setFrequencyFilter,
   departments,
   teamMembers,
 }: TaskFiltersProps) => {
@@ -105,6 +109,22 @@ const TaskFilters = ({
           {teamMembers.map((member) => (
             <SelectItem key={member.id} value={member.id}>{member.name}</SelectItem>
           ))}
+        </SelectContent>
+      </Select>
+
+      <Select value={frequencyFilter || "all"} onValueChange={(value) => setFrequencyFilter(value === "all" ? null : value)}>
+        <SelectTrigger className="w-[150px]">
+          <SelectValue placeholder="Frequency" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All Frequencies</SelectItem>
+          <SelectItem value="non-recurring">Non-recurring</SelectItem>
+          <SelectItem value="daily">Daily</SelectItem>
+          <SelectItem value="weekly">Weekly</SelectItem>
+          <SelectItem value="bi-weekly">Bi-weekly</SelectItem>
+          <SelectItem value="monthly">Monthly</SelectItem>
+          <SelectItem value="quarterly">Quarterly</SelectItem>
+          <SelectItem value="annually">Annually</SelectItem>
         </SelectContent>
       </Select>
       

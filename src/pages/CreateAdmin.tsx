@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { fastapiService } from "@/services/fastapi-service";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, CheckCircle, XCircle } from "lucide-react";
@@ -14,7 +14,7 @@ const CreateAdmin = () => {
   const createAdminUser = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('create-admin');
+      const { data, error } = await fastapiService.createAdmin();
       
       if (error) throw error;
       

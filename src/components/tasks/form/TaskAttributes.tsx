@@ -10,8 +10,8 @@ import { AttachmentsSelector } from "./attributes/AttachmentsSelector";
 interface TaskAttributesProps {
   department: string;
   setDepartment: (value: string) => void;
-  priority: "low" | "medium" | "high";
-  setPriority: (value: "low" | "medium" | "high") => void;
+  priority: "low" | "medium" | "high" | "urgent" | "critical" | "emergency";
+  setPriority: (value: "low" | "medium" | "high" | "urgent" | "critical" | "emergency") => void;
   dueDate: string;
   setDueDate: (value: string) => void;
   assignee: string;
@@ -37,10 +37,8 @@ export const TaskAttributes: React.FC<TaskAttributesProps> = ({
   setAttachmentsRequired,
 }) => {
   return (
-    <div className="space-y-4">
-      <h3 className="text-sm font-medium">Task Attributes</h3>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <DepartmentSelector 
           department={department} 
           setDepartment={setDepartment} 

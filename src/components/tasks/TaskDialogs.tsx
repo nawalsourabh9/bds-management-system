@@ -1,7 +1,8 @@
 
 import React from "react";
 import { Task } from "@/types/task";
-import TaskForm from "./TaskForm";
+import EditTaskDialog from "./EditTaskDialog";
+import UnifiedTaskCreationDialog from "./UnifiedTaskCreationDialog";
 import { 
   Dialog, 
   DialogContent, 
@@ -9,6 +10,7 @@ import {
   DialogTitle 
 } from "@/components/ui/dialog";
 import StatusUpdateDialog from "./StatusUpdateDialog";
+import { useTaskUpdate } from "@/hooks/task-operations/use-task-update";
 
 interface TaskDialogsProps {
   isCreateDialogOpen: boolean;
@@ -35,32 +37,44 @@ const TaskDialogs: React.FC<TaskDialogsProps> = ({
   onCreateTask,
   onUpdateTask
 }) => {
+  const { handleUpdateTask } = useTaskUpdate();
   return (
     <>
-      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle>Create New Task</DialogTitle>
-          </DialogHeader>
-          <TaskForm onSubmit={onCreateTask} />
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle>Edit Task</DialogTitle>
-          </DialogHeader>
-          <TaskForm onSubmit={onUpdateTask} initialData={currentEditTask || {}} />
-        </DialogContent>
-      </Dialog>
-
-      <StatusUpdateDialog
-        task={currentStatusTask}
-        isOpen={isStatusUpdateDialogOpen}
-        onClose={() => setIsStatusUpdateDialogOpen(false)}
-        onUpdateTask={onUpdateTask}
+      <UnifiedTaskCreationDialog
+        isOpen={isCreateDialogOpen}
+        onClose={() => setIsCreateDialogOpen(false)}
+        onCreateTask={onCreateTask}
       />
+
+      <EditTaskDialog
+        isOpen={isEditDialogOpen}
+        onClose={() => setIsEditDialogOpen(false)}
+        task={currentEditTask}
+        onUpdate={handleUpdateTask}
+      />
+
+      {currentStatusTask && (
+        <StatusUpdateDialog
+          taskId={currentStatusTask.id}
+          currentStatus={currentStatusTask.status}
+          currentPriority={currentStatusTask.priority}
+          dueDate={currentStatusTask.dueDate}
+          isRecurring={currentStatusTask.isRecurring}
+          parentTaskId={currentStatusTask.parentTaskId}
+          onStatusUpdate={async (taskId, newStatus, newPriority, comments) => {
+            // Use the correct handleUpdateTask function with taskId and updates
+            await handleUpdateTask(taskId, {
+              status: newStatus,
+              priority: newPriority,
+              comments: comments
+            });
+            setIsStatusUpdateDialogOpen(false);
+          }}
+          open={isStatusUpdateDialogOpen}
+          onOpenChange={setIsStatusUpdateDialogOpen}
+          trigger={null}
+        />
+      )}
     </>
   );
 };

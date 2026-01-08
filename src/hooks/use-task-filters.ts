@@ -10,6 +10,7 @@ export const useTaskFilters = (tasks: Task[]) => {
   const [departmentFilter, setDepartmentFilter] = useState<string | null>(null);
   const [assigneeFilter, setAssigneeFilter] = useState<string | null>(null);
   const [dueDateFilter, setDueDateFilter] = useState<Date | null>(null);
+  const [frequencyFilter, setFrequencyFilter] = useState<string | null>(null);
 
   // Extract unique departments from tasks
   const departments = useMemo(() => {
@@ -39,8 +40,48 @@ export const useTaskFilters = (tasks: Task[]) => {
     return Array.from(membersMap.values());
   }, [tasks]);
 
+  // Create a map of parent tasks for quick lookup
+  const parentTasksMap = useMemo(() => {
+    const map = new Map<string, Task>();
+    tasks.forEach(task => {
+      if (!task.parentTaskId) { // This is a parent task
+        map.set(task.id, task);
+      }
+    });
+    return map;
+  }, [tasks]);
+
   const filteredTasks = useMemo(() => {
-    return tasks.filter(task => {
+    // First, identify main tasks (parent tasks) and all child instances
+    const mainTasks = tasks.filter(task => !task.parentTaskId); // Parent tasks only
+    const childTasks = tasks.filter(task => !!task.parentTaskId); // All child tasks
+    
+    // Group ALL child tasks by parent ID
+    const childTasksByParent = new Map<string, Task[]>();
+    childTasks.forEach(child => {
+      if (child.parentTaskId) {
+        if (!childTasksByParent.has(child.parentTaskId)) {
+          childTasksByParent.set(child.parentTaskId, []);
+        }
+        childTasksByParent.get(child.parentTaskId)!.push(child);
+      }
+    });
+    
+    // Combine main tasks with ALL their child instances
+    const displayTasks: Task[] = [];
+    
+    mainTasks.forEach(mainTask => {
+      // Add the main task
+      displayTasks.push(mainTask);
+      
+      // Add ALL child instances if they exist
+      const childInstances = childTasksByParent.get(mainTask.id) || [];
+      childInstances.sort((a, b) => new Date(a.dueDate || '').getTime() - new Date(b.dueDate || '').getTime()); // Sort by due date
+      displayTasks.push(...childInstances);
+    });
+    
+    // Apply filters to the combined tasks
+    return displayTasks.filter(task => {
       // Search term filter
       const matchesSearch = 
         task.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -52,25 +93,44 @@ export const useTaskFilters = (tasks: Task[]) => {
       // Priority filter
       const matchesPriority = !priorityFilter || task.priority === priorityFilter;
       
-      // Department filter (new)
+      // Department filter
       const matchesDepartment = !departmentFilter || task.department === departmentFilter;
       
-      // Assignee filter (new)
+      // Assignee filter
       const matchesAssignee = !assigneeFilter || 
         (assigneeFilter === "unassigned" ? !task.assignee : task.assignee === assigneeFilter);
       
-      // Due date filter (new)
+      // Due date filter
       const matchesDueDate = !dueDateFilter || 
         (task.dueDate && isSameDay(new Date(task.dueDate), dueDateFilter));
+      
+      // Enhanced Frequency filter - check both task's frequency and parent's frequency
+      let matchesFrequency = true;
+      if (frequencyFilter) {
+        if (frequencyFilter === "non-recurring") {
+          // Show only non-recurring tasks (no parent and not recurring)
+          matchesFrequency = !task.isRecurring && !task.parentTaskId;
+        } else {
+          // For specific frequencies, check:
+          // 1. If it's a parent recurring task with matching frequency
+          // 2. If it's an instance whose parent has matching frequency
+          const taskFrequency = task.recurringFrequency;
+          const parentTask = task.parentTaskId ? parentTasksMap.get(task.parentTaskId) : null;
+          const parentFrequency = parentTask?.recurringFrequency;
+          
+          matchesFrequency = taskFrequency === frequencyFilter || parentFrequency === frequencyFilter;
+        }
+      }
       
       return matchesSearch && 
              matchesStatus && 
              matchesPriority && 
              matchesDepartment && 
              matchesAssignee && 
-             matchesDueDate;
+             matchesDueDate && 
+             matchesFrequency;
     });
-  }, [tasks, searchTerm, statusFilter, priorityFilter, departmentFilter, assigneeFilter, dueDateFilter]);
+  }, [tasks, searchTerm, statusFilter, priorityFilter, departmentFilter, assigneeFilter, dueDateFilter, frequencyFilter, parentTasksMap]);
 
   return {
     searchTerm,
@@ -85,6 +145,8 @@ export const useTaskFilters = (tasks: Task[]) => {
     setAssigneeFilter,
     dueDateFilter,
     setDueDateFilter,
+    frequencyFilter,
+    setFrequencyFilter,
     filteredTasks,
     departments,
     teamMembers

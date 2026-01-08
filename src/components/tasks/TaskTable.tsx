@@ -20,6 +20,7 @@ interface TasksTableProps {
   onViewTask: (task: Task) => void;
   onEditTask?: (task: Task) => void;
   onDeleteTask?: (taskId: string) => Promise<boolean>;
+  onUpdateTask?: (taskId: string, updates: Partial<Task>) => Promise<void>;
   isAdmin?: boolean;
   currentUserId?: string;
   currentUserPermissions?: any; // Simplified - accept any permissions
@@ -28,7 +29,10 @@ interface TasksTableProps {
     name: string;
     position: string;
     initials: string;
+    email?: string;
+    department?: string;
   }>;
+  highlightedTaskId?: string;
 }
 
 const TasksTable: React.FC<TasksTableProps> = ({ 
@@ -36,10 +40,12 @@ const TasksTable: React.FC<TasksTableProps> = ({
   onViewTask,
   onEditTask,
   onDeleteTask,
+  onUpdateTask,
   isAdmin = true, // Default to admin for all users
   currentUserId = "1", 
   currentUserPermissions,
-  teamMembers = []
+  teamMembers = [],
+  highlightedTaskId
 }) => {
   const [viewingDocument, setViewingDocument] = useState<{
     task: Task,
@@ -117,43 +123,86 @@ const TasksTable: React.FC<TasksTableProps> = ({
     }
   };
 
+  // Convert teamMembers to proper TeamMember format
+  const convertedTeamMembers = teamMembers.map(member => ({
+    ...member,
+    email: member.email || `${member.name.toLowerCase().replace(/\s+/g, '.')}@company.com`,
+    department: member.department || 'General'
+  }));
+
   return (
     <>
       <Card>
         <CardContent className="p-0">
-          <div className="rounded-md border">
-            <Table>
+          <div className="rounded-md border overflow-x-auto">
+            <Table className="w-full">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="border-r">Task</TableHead>
-                  <TableHead className="border-r">Assignee</TableHead>
-                  <TableHead className="border-r">Department</TableHead>
-                  <TableHead className="border-r">Due Date</TableHead>
-                  <TableHead className="border-r">Priority</TableHead>
-                  <TableHead className="border-r">Status</TableHead>
-                  <TableHead className="border-r">Documents</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead className="border-r min-w-[200px]">Task</TableHead>
+                  <TableHead className="border-r min-w-[120px]">Assignee</TableHead>
+                  <TableHead className="border-r min-w-[100px]">Department</TableHead>
+                  <TableHead className="border-r min-w-[120px] hidden lg:table-cell">Reports To</TableHead>
+                  <TableHead className="border-r min-w-[100px]">Due Date</TableHead>
+                  <TableHead className="border-r min-w-[80px]">Priority</TableHead>
+                  <TableHead className="border-r min-w-[120px]">Status</TableHead>
+                  <TableHead className="border-r min-w-[150px] hidden md:table-cell">Documents</TableHead>
+                  <TableHead className="sticky right-0 bg-background z-10 min-w-[120px] border-l-2 border-l-border">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {tasks.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground">
+                    <TableCell colSpan={9} className="text-center text-muted-foreground">
                       No tasks found
                     </TableCell>
                   </TableRow>
                 ) : (
-                  tasks.map((task) => (
-                    <TaskTableRow 
-                      key={task.id}
-                      task={task}
-                      onViewTask={onViewTask}
-                      onEditTask={onEditTask}
-                      onDeleteTask={onDeleteTask ? (taskId) => setTaskToDelete(taskId) : undefined}
-                      isAdmin={isAdmin}
-                      setViewingDocument={setViewingDocument}
-                    />
-                  ))
+                  (() => {
+                    // Group tasks: parent tasks first, then their children
+                    const parentTasks = tasks.filter(task => !task.parentTaskId);
+                    const childTasks = tasks.filter(task => task.parentTaskId);
+                    
+                    // Create grouped structure
+                    const groupedTasks: Task[] = [];
+                    
+                    parentTasks.forEach(parentTask => {
+                      // Add parent task
+                      groupedTasks.push(parentTask);
+                      
+                      // Add all child tasks for this parent
+                      const children = childTasks.filter(child => child.parentTaskId === parentTask.id);
+                      groupedTasks.push(...children);
+                    });
+                    
+                    // Add any orphaned child tasks (shouldn't happen but just in case)
+                    const orphanedChildren = childTasks.filter(child => 
+                      !parentTasks.some(parent => parent.id === child.parentTaskId)
+                    );
+                    groupedTasks.push(...orphanedChildren);
+                    
+                    return groupedTasks.map((task) => (
+                      <TaskTableRow 
+                        key={task.id}
+                        task={task}
+                        onViewTask={onViewTask}
+                        onEditTask={onEditTask || (() => {})}
+                        onUpdateTask={onUpdateTask}
+                        isHighlighted={highlightedTaskId === task.id}
+                        rowId={`task-${task.id}`}
+                        onDeleteTask={(taskId) => {
+                          if (onDeleteTask) {
+                            setTaskToDelete(taskId);
+                          }
+                        }}
+                        isAdmin={isAdmin}
+                        currentUserId={currentUserId}
+                        currentUserPermissions={currentUserPermissions}
+                        teamMembers={convertedTeamMembers}
+                        setViewingDocument={setViewingDocument}
+                        allTasks={tasks}
+                      />
+                    ));
+                  })()
                 )}
               </TableBody>
             </Table>
@@ -165,7 +214,7 @@ const TasksTable: React.FC<TasksTableProps> = ({
         viewingDocument={viewingDocument}
         onClose={() => setViewingDocument(null)}
         currentUserId={currentUserId}
-        teamMembers={teamMembers}
+        teamMembers={convertedTeamMembers}
         onUpdateRevision={(documentType, revisionId) => 
           viewingDocument && handleUpdateRevision(viewingDocument.task, documentType, revisionId)
         }

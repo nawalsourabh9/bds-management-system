@@ -1,74 +1,83 @@
-
 import { useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { Task } from "@/types/task";
+import { fastapiService } from "@/services/fastapi-service";
 import { toast } from "@/hooks/use-toast";
+import { useNotifications } from "@/hooks/use-notifications";
 
-/**
- * Hook for task approval operations
- */
 export const useTaskApproval = () => {
   const queryClient = useQueryClient();
+  const { fetchNotifications } = useNotifications();
 
-  const handleApproveTask = async (task: Task) => {
+  const approveTask = async (taskId: string) => {
     try {
-      const { error } = await supabase
-        .from('tasks')
-        .update({
-          approval_status: 'approved',
-          approved_by: (await supabase.auth.getUser()).data.user?.id,
-          approved_at: new Date().toISOString()
-        })
-        .eq('id', task.id);
-
-      if (error) throw error;
-
-      // Invalidate the tasks query to refetch data
+      console.log("Approving task:", taskId);
+      
+      const updatedTask = await fastapiService.updateTask(taskId, { 
+        approval_status: 'approved' 
+      });
+      console.log("Task approved successfully:", updatedTask);
+      
+      // Invalidate queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
-
+      
+      // Refresh notifications after a short delay
+      setTimeout(() => {
+        fetchNotifications();
+      }, 1000);
+      
       toast({
         title: "Task Approved",
-        description: `Task "${task.title}" has been approved`
+        description: `Task has been approved successfully.`
       });
-    } catch (error) {
+      
+      return updatedTask;
+    } catch (error: any) {
       console.error('Error approving task:', error);
       toast({
         title: "Error",
-        description: "Failed to approve task",
+        description: `Failed to approve task: ${error.message || 'Unknown error'}`,
         variant: "destructive"
       });
+      throw error;
     }
   };
 
-  const handleRejectTask = async (task: Task) => {
+  const rejectTask = async (taskId: string, reason?: string) => {
     try {
-      const { error } = await supabase
-        .from('tasks')
-        .update({
-          approval_status: 'rejected',
-          rejected_by: (await supabase.auth.getUser()).data.user?.id,
-          rejected_at: new Date().toISOString()
-        })
-        .eq('id', task.id);
-
-      if (error) throw error;
-
-      // Invalidate the tasks query to refetch data
+      console.log("Rejecting task:", taskId, reason);
+      
+      const updatedTask = await fastapiService.updateTask(taskId, { 
+        approval_status: 'rejected',
+        rejection_reason: reason 
+      });
+      console.log("Task rejected successfully:", updatedTask);
+      
+      // Invalidate queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
-
+      
+      // Refresh notifications after a short delay
+      setTimeout(() => {
+        fetchNotifications();
+      }, 1000);
+      
       toast({
         title: "Task Rejected",
-        description: `Task "${task.title}" has been rejected`
+        description: `Task has been rejected successfully.`
       });
-    } catch (error) {
+      
+      return updatedTask;
+    } catch (error: any) {
       console.error('Error rejecting task:', error);
       toast({
         title: "Error",
-        description: "Failed to reject task",
+        description: `Failed to reject task: ${error.message || 'Unknown error'}`,
         variant: "destructive"
       });
+      throw error;
     }
   };
 
-  return { handleApproveTask, handleRejectTask };
+  return {
+    approveTask,
+    rejectTask,
+  };
 };

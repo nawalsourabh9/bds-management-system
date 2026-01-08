@@ -1,0 +1,46 @@
+# FastAPI and ASGI server
+fastapi==0.116.1
+uvicorn==0.35.0
+pydantic-settings==2.10.1
+
+# Database
+sqlalchemy==2.0.23
+alembic==1.13.1
+psycopg2-binary==2.9.9
+asyncpg==0.29.0
+
+# Redis and Celery
+redis==5.0.1
+celery==5.3.4
+
+# Authentication and Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.6
+
+# File handling
+aiofiles==23.2.1
+python-magic==0.4.27
+
+# Logging and monitoring
+loguru==0.7.2
+
+# Date and time
+pytz==2023.3
+python-dateutil==2.8.2
+
+# Environment variables
+python-dotenv==1.0.0
+
+# HTTP client
+httpx==0.25.2
+
+# Azure Storage
+azure-storage-blob==12.19.0
+azure-identity==1.15.0
+
+# Development dependencies (optional)
+pytest==7.4.3
+pytest-asyncio==0.21.1
+black==23.11.0
+flake8==6.1.0

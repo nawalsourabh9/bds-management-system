@@ -19,6 +19,14 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
   
   const handleClick = () => {
     onMarkAsRead(notification.id);
+    
+    // If notification has a task_id, navigate to tasks page with task ID
+    if (notification.task_id) {
+      navigate(`/tasks?taskId=${notification.task_id}&filter=assigned`);
+      return;
+    }
+    
+    // Otherwise use actionUrl if available
     if (notification.actionUrl) {
       navigate(notification.actionUrl);
     }
@@ -44,7 +52,7 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
       onClick={handleClick}
       className={cn(
         "flex items-start space-x-3 p-3 hover:bg-accent cursor-pointer border-b border-border last:border-none",
-        !notification.read && "bg-accent/20"
+        !notification.is_read && "bg-accent/20"
       )}
     >
       <div className="mt-0.5">{getIcon()}</div>
@@ -52,18 +60,18 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
         <div className="flex items-center justify-between">
           <span className="font-medium">{notification.title}</span>
           <span className="text-xs text-muted-foreground">
-            {formatDistanceToNow(notification.timestamp, { addSuffix: true })}
+            {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
           </span>
         </div>
         <p className="text-sm text-muted-foreground mt-0.5 pb-1">{notification.message}</p>
-        {notification.actionUrl && (
+        {(notification.actionUrl || notification.task_id) && (
           <div className="flex items-center text-xs text-primary mt-1">
-            <span>View details</span>
+            <span>{notification.task_id ? 'View task' : 'View details'}</span>
             <ChevronRight className="h-3 w-3 ml-1" />
           </div>
         )}
       </div>
-      {!notification.read && (
+      {!notification.is_read && (
         <div className="h-2 w-2 rounded-full bg-primary" />
       )}
     </div>

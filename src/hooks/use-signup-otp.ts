@@ -1,7 +1,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { fastapiService } from "@/services/fastapi-service";
 import { sendOTPEmail } from "@/services/emailService";
 import { useCountdown } from "./use-countdown";
 
@@ -26,11 +26,10 @@ export const useSignupOTP = (email: string) => {
       const otp = Math.floor(100000 + Math.random() * 900000).toString();
       console.log("Generated OTP for testing:", otp);
       
-      const { error: otpError } = await supabase.from('otp_codes').insert({
+      const { error: otpError } = await fastapiService.createOtpCode({
         email,
-        code: otp,
-        expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
-        verified: false
+        otp_code: otp,
+        expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString()
       });
 
       if (otpError) throw otpError;
@@ -61,24 +60,16 @@ export const useSignupOTP = (email: string) => {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('otp_codes')
-        .select('*')
-        .eq('email', email)
-        .eq('code', otpValue)
-        .gt('expires_at', new Date().toISOString())
-        .eq('verified', false)
-        .single();
+      const { data, error } = await fastapiService.getOtpCode(email);
 
       if (error || !data) {
         toast.error("Invalid or expired verification code");
         return false;
       }
 
-      const { error: updateError } = await supabase
-        .from('otp_codes')
-        .update({ verified: true })
-        .eq('id', data.id);
+      const { error: updateError } = await fastapiService.updateOtpCode(email, {
+        verified: true
+      });
 
       if (updateError) throw updateError;
 

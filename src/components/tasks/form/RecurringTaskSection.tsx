@@ -12,7 +12,8 @@ import {
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { format, parse, isValid, addMonths, isBefore } from "date-fns";
+import { addMonths, isBefore } from "date-fns";
+import { parseInputDate, formatDateForInput, formatDateForDisplay } from "@/utils/dateUtils";
 
 interface RecurringTaskSectionProps {
   isRecurring: boolean;
@@ -35,28 +36,9 @@ export const RecurringTaskSection: React.FC<RecurringTaskSectionProps> = ({
   endDate,
   setEndDate,
 }) => {
-  // Convert string date to Date object for the calendar
-  const parseDateSafely = (dateStr: string): Date | undefined => {
-    if (!dateStr) return undefined;
-    
-    // Check if the date is in ISO format (yyyy-MM-ddTHH:mm:ss)
-    if (dateStr.includes('T')) {
-      const date = new Date(dateStr);
-      return isValid(date) ? date : undefined;
-    }
-    
-    // Try to parse as yyyy-MM-dd
-    try {
-      const parsedDate = parse(dateStr, "yyyy-MM-dd", new Date());
-      return isValid(parsedDate) ? parsedDate : undefined;
-    } catch (error) {
-      console.error("Error parsing date:", error);
-      return undefined;
-    }
-  };
-
-  const startDateValue = parseDateSafely(startDate);
-  const endDateValue = parseDateSafely(endDate);
+  // Convert string dates to Date objects for the calendar
+  const startDateValue = parseInputDate(startDate);
+  const endDateValue = parseInputDate(endDate);
   
   // Calculate maximum allowed end date (6 months from start date)
   const maxEndDate = startDateValue ? addMonths(startDateValue, 6) : undefined;
@@ -66,15 +48,25 @@ export const RecurringTaskSection: React.FC<RecurringTaskSectionProps> = ({
     (isBefore(endDateValue, addMonths(startDateValue, 6)) && 
      isBefore(startDateValue, endDateValue));
 
+  // When recurring is turned off, clear the dates
+  useEffect(() => {
+    if (!isRecurring) {
+      setStartDate("");
+      setEndDate("");
+    }
+  }, [isRecurring, setStartDate, setEndDate]);
+
   // When start date changes, adjust end date if needed
   useEffect(() => {
     if (startDateValue && endDateValue) {
       // If end date is more than 6 months after start date, reset it
       if (!isBefore(endDateValue, addMonths(startDateValue, 6))) {
+        console.log("RecurringTaskSection: End date too far from start date, resetting");
         setEndDate("");
       }
       // If end date is before start date, reset it
       else if (isBefore(endDateValue, startDateValue)) {
+        console.log("RecurringTaskSection: End date before start date, resetting");
         setEndDate("");
       }
     }
@@ -83,7 +75,8 @@ export const RecurringTaskSection: React.FC<RecurringTaskSectionProps> = ({
   // Handle date selection from calendar
   const handleDateSelect = (setter: (value: string) => void) => (date: Date | undefined) => {
     if (date) {
-      const formattedDate = format(date, "yyyy-MM-dd");
+      const formattedDate = formatDateForInput(date);
+      console.log("RecurringTaskSection: Setting date:", formattedDate);
       setter(formattedDate);
     } else {
       setter("");
@@ -91,11 +84,16 @@ export const RecurringTaskSection: React.FC<RecurringTaskSectionProps> = ({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
       <div className="flex items-center justify-between">
-        <Label htmlFor="isRecurring" className="text-sm font-medium">
-          Recurring Task
-        </Label>
+        <div className="space-y-1">
+          <Label htmlFor="isRecurring" className="text-sm font-medium">
+            Recurring Task
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            Backend automation will generate new instances when previous ones are completed
+          </p>
+        </div>
         <Switch
           id="isRecurring"
           checked={isRecurring}
@@ -104,10 +102,10 @@ export const RecurringTaskSection: React.FC<RecurringTaskSectionProps> = ({
       </div>
 
       {isRecurring && (
-        <div className="space-y-4">
+        <div className="space-y-4 pt-2">
           <div className="space-y-2">
             <Label htmlFor="recurringFrequency" className="text-sm font-medium">
-              Frequency
+              Frequency <span className="text-destructive">*</span>
             </Label>
             <Select
               value={recurringFrequency}
@@ -129,7 +127,7 @@ export const RecurringTaskSection: React.FC<RecurringTaskSectionProps> = ({
           
           <div className="space-y-2">
             <Label htmlFor="startDate" className="text-sm font-medium">
-              Start Date
+              Recurrence Start Date <span className="text-destructive">*</span>
             </Label>
             <Popover>
               <PopoverTrigger asChild>
@@ -142,7 +140,7 @@ export const RecurringTaskSection: React.FC<RecurringTaskSectionProps> = ({
                   )}
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
-                  {startDateValue ? format(startDateValue, "PPP") : <span>Pick a start date</span>}
+                  {startDateValue ? formatDateForDisplay(startDateValue) : <span>Pick a start date</span>}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
@@ -160,11 +158,11 @@ export const RecurringTaskSection: React.FC<RecurringTaskSectionProps> = ({
           <div className="space-y-2">
             <div className="flex justify-between">
               <Label htmlFor="endDate" className="text-sm font-medium">
-                End Date
+                Recurrence End Date <span className="text-destructive">*</span>
               </Label>
               {startDateValue && (
                 <span className="text-xs text-muted-foreground">
-                  Max: {maxEndDate ? format(maxEndDate, "MMM dd, yyyy") : ""}
+                  Max: {maxEndDate ? formatDateForDisplay(maxEndDate) : ""}
                 </span>
               )}
             </div>
@@ -180,7 +178,7 @@ export const RecurringTaskSection: React.FC<RecurringTaskSectionProps> = ({
                   )}
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
-                  {endDateValue ? format(endDateValue, "PPP") : <span>Pick an end date</span>}
+                  {endDateValue ? formatDateForDisplay(endDateValue) : <span>Pick an end date</span>}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
@@ -204,6 +202,11 @@ export const RecurringTaskSection: React.FC<RecurringTaskSectionProps> = ({
                 End date must be after start date and within 6 months
               </div>
             )}
+          </div>
+          
+          <div className="text-xs text-muted-foreground bg-blue-50 p-3 rounded border-l-4 border-blue-400">
+            <strong>Note:</strong> This creates a parent recurring task. New instances will be automatically 
+            generated by the backend system when the previous instance is completed.
           </div>
         </div>
       )}

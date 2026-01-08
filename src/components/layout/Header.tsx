@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Bell, Search, LogOut, Settings, HelpCircle, UserRound, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useNavigate } from "react-router-dom";
@@ -11,7 +12,6 @@ import { useNotifications } from "@/hooks/use-notifications";
 import { NotificationsList } from "@/components/notifications/NotificationsList";
 import { useAuth } from "@/hooks/use-auth";
 import { EmployeeData } from "@/types/auth";
-import { User } from "@supabase/supabase-js";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,22 +35,13 @@ export function Header() {
   const getInitials = () => {
     if (!user) return "U";
     
-    // Check if the user is a Supabase User or our EmployeeData
-    if ('user_metadata' in user) {
-      // Supabase User
-      const userData = user.user_metadata || {};
-      const firstName = userData.first_name || "";
-      const lastName = userData.last_name || "";
-      return (firstName[0] || "") + (lastName[0] || "");
-    } else {
-      // EmployeeData
-      const name = (user as EmployeeData).name || "";
-      const nameParts = name.split(' ');
-      if (nameParts.length >= 2) {
-        return (nameParts[0][0] || "") + (nameParts[1][0] || "");
-      }
-      return name.substring(0, 1).toUpperCase() || "U";
+    // EmployeeData
+    const name = (user as EmployeeData).name || "";
+    const nameParts = name.split(' ');
+    if (nameParts.length >= 2) {
+      return (nameParts[0][0] || "") + (nameParts[1][0] || "");
     }
+    return name.substring(0, 1).toUpperCase() || "U";
   };
   
   return (
@@ -78,12 +69,21 @@ export function Header() {
               <Button variant="outline" size="icon" className="relative border-border hover:bg-accent">
                 <Bell className="h-4 w-4" />
                 {unreadCount > 0 && (
-                  <span className="absolute top-0 right-0 h-2 w-2 rounded-full bg-primary"></span>
+                  <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-red-500 text-white text-xs font-semibold flex items-center justify-center animate-pulse">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
                 )}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-80 bg-background border-border">
-              <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+            <DropdownMenuContent align="end" className="w-96 bg-background border-border max-h-[500px]">
+              <DropdownMenuLabel className="flex items-center justify-between">
+                <span>Notifications</span>
+                {unreadCount > 0 && (
+                  <Badge variant="secondary" className="ml-2">
+                    {unreadCount} new
+                  </Badge>
+                )}
+              </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <NotificationsList />
             </DropdownMenuContent>
@@ -99,7 +99,12 @@ export function Header() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="bg-background border-border">
-              <DropdownMenuLabel>My Account</DropdownMenuLabel>
+              <DropdownMenuLabel>
+                <div className="flex flex-col">
+                  <span>My Account</span>
+                  <span className="text-xs text-muted-foreground font-normal">BDS Manufacturing</span>
+                </div>
+              </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem 
                 className="flex items-center hover:bg-accent"

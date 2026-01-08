@@ -1,21 +1,28 @@
 
 import { Button } from "@/components/ui/button";
-import { Edit, Trash } from "lucide-react";
+import { Edit, Trash, Key } from "lucide-react";
 import { Employee } from "../types";
+import { useAuth } from "@/hooks/use-auth";
 
 interface EmployeeListProps {
   employees: Employee[];
   openEditDialog: (employee: Employee) => void;
+  openPasswordResetDialog: (employee: Employee) => void;
   setEmployeeToDelete: (id: string) => void;
   setIsDeleteDialogOpen: (isOpen: boolean) => void;
 }
 
-export function EmployeeList({ 
-  employees, 
-  openEditDialog, 
-  setEmployeeToDelete, 
-  setIsDeleteDialogOpen 
+export function EmployeeList({
+  employees,
+  openEditDialog,
+  openPasswordResetDialog,
+  setEmployeeToDelete,
+  setIsDeleteDialogOpen
 }: EmployeeListProps) {
+  const { user } = useAuth();
+  const employee = user as any;
+  const userRole = employee?.role?.toLowerCase();
+  const isAdmin = userRole === 'admin' || userRole === 'superadmin';
   return (
     <div className="border-border">
       <table className="w-full border-collapse">
@@ -26,6 +33,8 @@ export function EmployeeList({
             <th className="px-4 py-2 font-medium">Email</th>
             <th className="px-4 py-2 font-medium">Position</th>
             <th className="px-4 py-2 font-medium">Department</th>
+            <th className="px-4 py-2 font-medium">Sub-Department</th>
+            <th className="px-4 py-2 font-medium">Reports To</th>
             <th className="px-4 py-2 font-medium">Role</th>
             <th className="px-4 py-2 font-medium">Status</th>
             <th className="px-4 py-2 font-medium">Actions</th>
@@ -34,11 +43,15 @@ export function EmployeeList({
         <tbody>
           {employees.map((employee) => (
             <tr key={employee.id} className="excel-row border-b border-border">
-              <td className="px-4 py-2">{employee.employeeId}</td>
+              <td className="px-4 py-2 font-mono text-sm">{employee.employeeId}</td>
               <td className="px-4 py-2">{employee.name}</td>
               <td className="px-4 py-2">{employee.email}</td>
-              <td className="px-4 py-2">{employee.position}</td>
-              <td className="px-4 py-2">{employee.department}</td>
+              <td className="px-4 py-2">{employee.position_name || 'No Position'}</td>
+              <td className="px-4 py-2">{employee.department_name || 'No Department'}</td>
+              <td className="px-4 py-2">
+                {employee.sub_department_name || <span className="text-gray-400">-</span>}
+              </td>
+              <td className="px-4 py-2">{employee.reports_to_name || 'No Manager'}</td>
               <td className="px-4 py-2">{employee.role}</td>
               <td className="px-4 py-2">
                 <span className={`inline-block px-2 py-1 text-xs rounded-full ${
@@ -51,25 +64,42 @@ export function EmployeeList({
               </td>
               <td className="px-4 py-2">
                 <div className="flex space-x-1">
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="excel-button h-8 w-8 p-0" 
-                    onClick={() => openEditDialog(employee)}
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="excel-button h-8 w-8 p-0 hover:bg-red-100 hover:text-red-600" 
-                    onClick={() => {
-                      setEmployeeToDelete(employee.id);
-                      setIsDeleteDialogOpen(true);
-                    }}
-                  >
-                    <Trash className="h-4 w-4" />
-                  </Button>
+                  {isAdmin && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="excel-button h-8 w-8 p-0"
+                        onClick={() => openEditDialog(employee)}
+                        title="Edit employee details"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="excel-button h-8 w-8 p-0 hover:bg-blue-100 hover:text-blue-600"
+                        onClick={() => openPasswordResetDialog(employee)}
+                        title="Reset password"
+                      >
+                        <Key className="h-4 w-4" />
+                      </Button>
+                    </>
+                  )}
+                  {isAdmin && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="excel-button h-8 w-8 p-0 hover:bg-red-100 hover:text-red-600"
+                      onClick={() => {
+                        setEmployeeToDelete(employee.id);
+                        setIsDeleteDialogOpen(true);
+                      }}
+                      title="Delete employee"
+                    >
+                      <Trash className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </td>
             </tr>

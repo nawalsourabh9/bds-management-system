@@ -1,5 +1,5 @@
 
-import { supabase } from '@/integrations/supabase/client';
+import { fastapiService } from './fastapi-service';
 import { getOTPEmailTemplate } from './emailTemplates';
 
 interface SendEmailParams {
@@ -37,15 +37,13 @@ export const sendEmail = async ({
     
     while (retries > 0 && !success) {
       try {
-        // Send email using edge function with timeout
+        // Send email using FastAPI endpoint with timeout
         const response = await Promise.race([
-          supabase.functions.invoke('send-email', {
-            body: {
-              to,
-              subject,
-              body,
-              isHtml
-            }
+          fastapiService.sendEmail({
+            to,
+            subject,
+            body,
+            isHtml
           }),
           new Promise<never>((_, reject) => 
             setTimeout(() => reject(new Error("Request timeout")), 15000)
@@ -94,9 +92,7 @@ export const sendOTPEmail = async (to: string, otp: string) => {
     console.log("Sending with request body:", requestBody);
     
     const response = await Promise.race([
-      supabase.functions.invoke('send-email', {
-        body: requestBody
-      }),
+      fastapiService.sendEmail(requestBody),
       new Promise<never>((_, reject) => 
         setTimeout(() => reject(new Error("Request timeout")), 20000)
       )
