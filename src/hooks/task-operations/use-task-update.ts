@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { fastapiService } from "@/services/fastapi-service";
 import { Task } from "@/types/task";
 import { toast } from "@/hooks/use-toast";
-import { useNotifications } from "@/hooks/use-notifications";
+import { useNotifications } from "@/hooks/use-notifications.tsx";
 
 export const useTaskUpdate = () => {
   const queryClient = useQueryClient();

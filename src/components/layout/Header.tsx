@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { Bell, Search, LogOut, Settings, HelpCircle, UserRound, UserPlus } from "lucide-react";
+import { Bell, Search, LogOut, Settings, HelpCircle, UserRound, UserPlus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { useNotifications } from "@/hooks/use-notifications";
+import { useNotifications } from "@/hooks/use-notifications.tsx";
 import { NotificationsList } from "@/components/notifications/NotificationsList";
 import { useAuth } from "@/hooks/use-auth";
 import { EmployeeData } from "@/types/auth";
@@ -24,7 +24,7 @@ import {
 export function Header() {
   const [searchQuery, setSearchQuery] = useState("");
   const navigate = useNavigate();
-  const { unreadCount } = useNotifications();
+  const { unreadCount, fetchNotifications } = useNotifications();
   const { signOut, user } = useAuth();
   
   const handleLogout = async () => {
@@ -78,11 +78,22 @@ export function Header() {
             <DropdownMenuContent align="end" className="w-96 bg-background border-border max-h-[500px]">
               <DropdownMenuLabel className="flex items-center justify-between">
                 <span>Notifications</span>
-                {unreadCount > 0 && (
-                  <Badge variant="secondary" className="ml-2">
-                    {unreadCount} new
-                  </Badge>
-                )}
+                <div className="flex items-center gap-2">
+                  {unreadCount > 0 && (
+                    <Badge variant="secondary">
+                      {unreadCount} new
+                    </Badge>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => fetchNotifications()}
+                    className="h-6 w-6 p-0"
+                    title="Refresh notifications"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                  </Button>
+                </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <NotificationsList />

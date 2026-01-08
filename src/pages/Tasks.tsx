@@ -16,6 +16,22 @@ const Tasks = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const taskIdFromUrl = searchParams.get('taskId');
   const filterFromUrl = searchParams.get('filter');
+
+  // Scroll to highlighted task when component mounts
+  useEffect(() => {
+    if (taskIdFromUrl) {
+      // Small delay to allow the table to render
+      setTimeout(() => {
+        const highlightedElement = document.getElementById(`task-${taskIdFromUrl}`);
+        if (highlightedElement) {
+          highlightedElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center'
+          });
+        }
+      }, 500);
+    }
+  }, [taskIdFromUrl, tasks]);
   
   // Only log in development environment
   if (process.env.NODE_ENV === 'development') {

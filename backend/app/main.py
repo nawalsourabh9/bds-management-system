@@ -137,7 +137,7 @@ def create_audit_log_entry(user_id: str, action: str, table_name: str, record_id
         # Don't fail the operation if audit logging fails
 
 # Helper function to notify task assignee, their supervisor, and admins about task changes
-def notify_task_update(task_id: str, change_type: str, change_details: str, old_value: str = None, new_value: str = None):
+def notify_task_update(task_id: str, change_type: str, change_details: str, old_value: str = None, new_value: str = None, changed_by_user_id: str = None):
     """Notify assignee, their supervisor, and admins about task updates"""
     try:
         # Get task details
@@ -148,9 +148,24 @@ def notify_task_update(task_id: str, change_type: str, change_details: str, old_
         task_title = task.get('title', 'Unknown Task')
         assignee_id = task.get('assignee_id')
         
-        # Build notification message
+        # Build notification message with user context
         if old_value and new_value:
-            message = f"Task '{task_title}' {change_details}: Changed from '{old_value}' to '{new_value}'."
+            if change_type == "Status Changed" and changed_by_user_id:
+                # Get the user who made the change
+                changer_name = "Someone"
+                try:
+                    changer_info = db_service.execute_query("""
+                        SELECT CONCAT(first_name, ' ', last_name) as name
+                        FROM users WHERE id = %s
+                    """, (changed_by_user_id,))
+                    if changer_info and len(changer_info) > 0:
+                        changer_name = changer_info[0]['name']
+                except Exception as e:
+                    logger.warning(f"Could not get changer name: {e}")
+
+                message = f"{changer_name} changed task '{task_title}' status from '{old_value}' to '{new_value}'."
+            else:
+                message = f"Task '{task_title}' {change_details}: Changed from '{old_value}' to '{new_value}'."
         else:
             message = f"Task '{task_title}' {change_details}."
         
@@ -1988,7 +2003,68 @@ async def create_task(task_data: dict):
         except Exception as creator_notification_error:
             logger.error(f"Failed to notify creator: {creator_notification_error}")
             # Don't fail the operation if notification fails
-        
+
+        # Send notification to assignee (for regular tasks)
+        if task_db_data.get('assignee_id') and not task_db_data.get('is_recurring'):
+            try:
+                assignee_id = task_db_data['assignee_id']
+                task_title = task_db_data.get('title', 'Unknown Task')
+
+                # Get assignee name for better notification message
+                assignee_name = "You"
+                try:
+                    assignee_info = db_service.execute_query("""
+                        SELECT CONCAT(first_name, ' ', last_name) as name
+                        FROM users WHERE id = %s
+                    """, (assignee_id,))
+                    if assignee_info and len(assignee_info) > 0:
+                        assignee_name = assignee_info[0]['name']
+                except Exception as e:
+                    logger.warning(f"Could not get assignee name: {e}")
+
+                assignee_notification_title = f"New Task Assigned: {task_title}"
+                assignee_notification_message = f"You have been assigned a new task: {task_title}"
+                if task_db_data.get('due_date'):
+                    assignee_notification_message += f" (Due: {task_db_data['due_date']})"
+
+                db_service.create_notification(
+                    user_id=str(assignee_id),
+                    title=assignee_notification_title,
+                    message=assignee_notification_message,
+                    notification_type='info',
+                    task_id=str(task_id)
+                )
+                logger.info(f"Notification created for assignee {assignee_id}")
+
+                # Also notify assignee's supervisor
+                supervisor_id = get_user_supervisor(str(assignee_id))
+                if supervisor_id:
+                    try:
+                        assignee_info = db_service.execute_query("""
+                            SELECT CONCAT(first_name, ' ', last_name) as name
+                            FROM users WHERE id = %s
+                        """, (assignee_id,))
+                        assignee_name = assignee_info[0]['name'] if assignee_info and len(assignee_info) > 0 else 'User'
+
+                        supervisor_message = f"New task '{task_title}' has been assigned to {assignee_name}"
+                        if task_db_data.get('due_date'):
+                            supervisor_message += f" (Due: {task_db_data['due_date']})"
+
+                        db_service.create_notification(
+                            user_id=str(supervisor_id),
+                            title=f"Task Assignment: {task_title}",
+                            message=supervisor_message,
+                            notification_type='info',
+                            task_id=str(task_id)
+                        )
+                        logger.info(f"Notification created for supervisor {supervisor_id}")
+                    except Exception as supervisor_error:
+                        logger.error(f"Failed to notify supervisor {supervisor_id}: {supervisor_error}")
+
+            except Exception as assignee_notification_error:
+                logger.error(f"Failed to notify assignee: {assignee_notification_error}")
+                # Don't fail the operation if notification fails
+
         # For recurring tasks, MANDATORY first child task creation
         if task_db_data.get('is_recurring'):
             if not first_child_data or not first_child_data.get('assignee_id') or not first_child_data.get('due_date'):
@@ -2127,10 +2203,23 @@ async def create_task(task_data: dict):
                     supervisor_id = get_user_supervisor(str(task_db_data['assignee_id']))
                     if supervisor_id:
                         try:
-                            supervisor_message = f"New task '{task_db_data['title']}' has been assigned to {assignee_display_name}"
+                            # Get creator name for supervisor notification
+                            creator_name = "Someone"
+                            try:
+                                if 'created_by' in task_db_data and task_db_data['created_by']:
+                                    creator_info = db_service.execute_query("""
+                                        SELECT CONCAT(first_name, ' ', last_name) as name
+                                        FROM users WHERE id = %s
+                                    """, (task_db_data['created_by'],))
+                                    if creator_info and len(creator_info) > 0:
+                                        creator_name = creator_info[0]['name']
+                            except Exception as e:
+                                logger.warning(f"Could not get creator name: {e}")
+
+                            supervisor_message = f"{creator_name} assigned a new task '{task_title}' to {assignee_name}"
                             if task_db_data.get('due_date'):
                                 supervisor_message += f" (Due: {task_db_data['due_date']})"
-                            
+
                             db_service.create_notification(
                                 user_id=supervisor_id,
                                 title="New Task Assigned to Team Member",
@@ -2253,9 +2342,12 @@ async def validate_task_update_fields(task_data: dict):
             raise ValueError("Start date cannot be after due date")
 
 @app.patch("/api/v1/tasks/{task_id}")
-async def partial_update_task(task_id: str, task_data: dict):
+async def partial_update_task(task_id: str, task_data: dict, token: str = Depends(get_token_from_header)):
     """Partially update a task (PATCH) - only provided fields will be updated"""
     try:
+        # Get current user from token
+        payload = verify_token(token)
+        current_user_id = payload.get("sub")
         # Validate that at least one field is provided
         if not task_data:
             raise HTTPException(status_code=400, detail="At least one field must be provided for update")
@@ -2394,12 +2486,13 @@ async def partial_update_task(task_id: str, task_data: dict):
                         change_type="Updated",
                         change_details=f"has been updated - {field_name} changed",
                         old_value=str(old_value) if old_value else None,
-                        new_value=str(new_value) if new_value else None
+                        new_value=str(new_value) if new_value else None,
+                        changed_by_user_id=current_user_id
                     )
         except Exception as notification_error:
             logger.error(f"Failed to send notifications for task update: {notification_error}", exc_info=True)
             # Don't fail the operation if notification fails
-        
+
         response = {
             "message": "Task partially updated successfully",
             "updated_fields": list(task_db_data.keys()),
@@ -2424,9 +2517,13 @@ async def partial_update_task(task_id: str, task_data: dict):
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.put("/api/v1/tasks/{task_id}")
-async def full_update_task(task_id: str, task_data: dict):
+async def full_update_task(task_id: str, task_data: dict, token: str = Depends(get_token_from_header)):
     """Fully update a task (PUT) - all provided fields will be updated"""
     try:
+        # Get current user from token
+        payload = verify_token(token)
+        current_user_id = payload.get("sub")
+
         # Convert frontend field names to database field names
         task_db_data = {}
         
@@ -2509,7 +2606,8 @@ async def full_update_task(task_id: str, task_data: dict):
                         change_type="Updated",
                         change_details=f"has been updated - {field_name} changed",
                         old_value=str(old_value) if old_value else None,
-                        new_value=str(new_value) if new_value else None
+                        new_value=str(new_value) if new_value else None,
+                        changed_by_user_id=current_user_id
                     )
         except Exception as notification_error:
             logger.error(f"Failed to send notifications for task update: {notification_error}", exc_info=True)
@@ -2651,12 +2749,16 @@ async def full_update_task(task_id: str, task_data: dict):
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.patch("/api/v1/tasks/{task_id}/status")
-async def update_task_status(task_id: str, status_data: dict):
+async def update_task_status(task_id: str, status_data: dict, token: str = Depends(get_token_from_header)):
     """Quick status update endpoint with auto-generation logic"""
     try:
+        # Get current user from token
+        payload = verify_token(token)
+        current_user_id = payload.get("sub")
+
         if 'status' not in status_data:
             raise HTTPException(status_code=400, detail="Status field is required")
-        
+
         await validate_task_update_fields({'status': status_data['status']})
         
         # Get old status for notification
@@ -2705,7 +2807,8 @@ async def update_task_status(task_id: str, status_data: dict):
                     change_type="Status Changed",
                     change_details="status has been changed",
                     old_value=old_status,
-                    new_value=status_data['status']
+                    new_value=status_data['status'],
+                    changed_by_user_id=current_user_id
                 )
                 logger.info(f"Notifications created for task {task_id} status change")
             except Exception as notification_error:
@@ -2922,9 +3025,13 @@ async def update_task_assignee(task_id: str, assignee_data: dict):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.patch("/api/v1/tasks/{task_id}/priority")
-async def update_task_priority(task_id: str, priority_data: dict):
+async def update_task_priority(task_id: str, priority_data: dict, token: str = Depends(get_token_from_header)):
     """Quick priority update endpoint"""
     try:
+        # Get current user from token
+        payload = verify_token(token)
+        current_user_id = payload.get("sub")
+
         if 'priority' not in priority_data:
             raise HTTPException(status_code=400, detail="Priority field is required")
         
@@ -2948,7 +3055,8 @@ async def update_task_priority(task_id: str, priority_data: dict):
                     change_type="Priority Changed",
                     change_details="priority has been changed",
                     old_value=old_priority,
-                    new_value=priority_data['priority']
+                    new_value=priority_data['priority'],
+                    changed_by_user_id=current_user_id
                 )
             except Exception as notification_error:
                 logger.error(f"Failed to send notification for priority change: {notification_error}")
@@ -2966,12 +3074,16 @@ async def update_task_priority(task_id: str, priority_data: dict):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.patch("/api/v1/tasks/{task_id}/due-date")
-async def update_task_due_date(task_id: str, due_date_data: dict):
+async def update_task_due_date(task_id: str, due_date_data: dict, token: str = Depends(get_token_from_header)):
     """Quick due date update endpoint"""
     try:
+        # Get current user from token
+        payload = verify_token(token)
+        current_user_id = payload.get("sub")
+
         if 'dueDate' not in due_date_data:
             raise HTTPException(status_code=400, detail="dueDate field is required")
-        
+
         await validate_task_update_fields({'due_date': due_date_data['dueDate']})
         
         # Get old due date for notification
@@ -2992,7 +3104,8 @@ async def update_task_due_date(task_id: str, due_date_data: dict):
                     change_type="Due Date Changed",
                     change_details="due date has been changed",
                     old_value=str(old_due_date) if old_due_date else "Not set",
-                    new_value=str(due_date_data['dueDate']) if due_date_data['dueDate'] else "Not set"
+                    new_value=str(due_date_data['dueDate']) if due_date_data['dueDate'] else "Not set",
+                    changed_by_user_id=current_user_id
                 )
             except Exception as notification_error:
                 logger.error(f"Failed to send notification for due date change: {notification_error}")
@@ -3425,15 +3538,19 @@ async def get_notifications(user_id: str = None):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.put("/api/v1/notifications/{notification_id}/read")
-async def mark_notification_read(notification_id: str):
+async def mark_notification_read(notification_id: str, token: str = Depends(get_token_from_header)):
     """Mark a notification as read"""
     try:
+        # Get current user from token
+        payload = verify_token(token)
+        user_id = payload.get("sub")
+
         result = db_service.execute_query("""
-            UPDATE notifications 
-            SET is_read = TRUE 
-            WHERE id = %(notification_id)s
+            UPDATE notifications
+            SET is_read = TRUE
+            WHERE id = %(notification_id)s AND user_id = %(user_id)s
             RETURNING id;
-        """, {"notification_id": int(notification_id)})
+        """, {"notification_id": notification_id, "user_id": user_id})
         
         if result and len(result) > 0:
             return {
@@ -3449,15 +3566,16 @@ async def mark_notification_read(notification_id: str):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.put("/api/v1/notifications/read-all")
-async def mark_all_notifications_read(user_id: str = None):
-    """Mark all notifications as read for a user"""
+async def mark_all_notifications_read(token: str = Depends(get_token_from_header)):
+    """Mark all notifications as read for the current user"""
     try:
-        if not user_id:
-            raise HTTPException(status_code=400, detail="user_id parameter is required")
-        
+        # Get current user from token
+        payload = verify_token(token)
+        user_id = payload.get("sub")
+
         result = db_service.execute_query("""
-            UPDATE notifications 
-            SET is_read = TRUE 
+            UPDATE notifications
+            SET is_read = TRUE
             WHERE user_id = %(user_id)s AND is_read = FALSE
             RETURNING id;
         """, {"user_id": user_id})
@@ -3473,19 +3591,50 @@ async def mark_all_notifications_read(user_id: str = None):
         logger.error(f"Error marking all notifications as read: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-@app.delete("/api/v1/notifications/clear-all")
-async def clear_all_notifications(user_id: str = None):
-    """Delete all notifications for a user"""
+@app.delete("/api/v1/notifications/{notification_id}")
+async def delete_notification(notification_id: str, token: str = Depends(get_token_from_header)):
+    """Delete a specific notification for the current user"""
     try:
-        if not user_id:
-            raise HTTPException(status_code=400, detail="user_id parameter is required")
-        
+        # Get current user from token
+        payload = verify_token(token)
+        user_id = payload.get("sub")
+
         result = db_service.execute_query("""
-            DELETE FROM notifications 
+            DELETE FROM notifications
+            WHERE id = %(notification_id)s AND user_id = %(user_id)s
+            RETURNING id;
+        """, {"notification_id": notification_id, "user_id": user_id})
+
+        if result and len(result) > 0:
+            return {
+                "message": "Notification deleted",
+                "notification_id": notification_id,
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            raise HTTPException(status_code=404, detail="Notification not found")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting notification: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.delete("/api/v1/notifications/clear-all")
+async def clear_all_notifications(token: str = Depends(get_token_from_header)):
+    """Delete all notifications for the current user"""
+    try:
+        # Get current user from token
+        payload = verify_token(token)
+        user_id = payload.get("sub")
+
+        result = db_service.execute_query("""
+            DELETE FROM notifications
             WHERE user_id = %(user_id)s
             RETURNING id;
         """, {"user_id": user_id})
-        
+
         return {
             "message": "All notifications cleared",
             "deleted_count": len(result) if result else 0,

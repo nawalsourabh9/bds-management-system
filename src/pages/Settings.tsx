@@ -5,9 +5,22 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { fastapiService } from "@/services/fastapi-service";
+import {
+  playNotificationSound,
+  playSuccessSound,
+  playErrorSound,
+  setSoundsEnabled,
+  getSoundsEnabled,
+  setNotificationVolume,
+  getNotificationVolume,
+  requestBrowserNotificationPermission,
+  isBrowserNotificationsEnabled
+} from "@/utils/soundUtils";
 
 const Settings = () => {
   const { user, isAdmin } = useAuth();
@@ -34,6 +47,10 @@ const Settings = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
 
+  // Sound settings state
+  const [soundsEnabled, setSoundsEnabledState] = useState(getSoundsEnabled());
+  const [soundVolume, setSoundVolumeState] = useState(getNotificationVolume() * 100); // Convert to percentage
+
   // Load settings from localStorage on mount
   useEffect(() => {
     const savedSettings = localStorage.getItem('companySettings');
@@ -45,6 +62,8 @@ const Settings = () => {
         console.error('Error loading saved settings:', error);
       }
     }
+    // Set loading to false after attempting to load settings
+    setIsLoadingData(false);
   }, []);
 
   // Handle input changes
@@ -346,8 +365,107 @@ const Settings = () => {
               <CardTitle>Notification Settings</CardTitle>
               <CardDescription>Configure how you receive notifications</CardDescription>
             </CardHeader>
-            <CardContent className="h-[300px] flex items-center justify-center">
-              <p className="text-muted-foreground">Notification settings coming soon.</p>
+            <CardContent className="space-y-6 pt-6">
+              {/* Sound Settings */}
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label htmlFor="notification-sounds">Enable Notification Sounds</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Play sounds when you receive notifications
+                    </p>
+                  </div>
+                  <Switch
+                    id="notification-sounds"
+                    checked={soundsEnabled}
+                    onCheckedChange={(checked) => {
+                      setSoundsEnabledState(checked);
+                      setSoundsEnabled(checked);
+                      toast.success(checked ? "Notification sounds enabled" : "Notification sounds disabled");
+                    }}
+                  />
+                </div>
+
+                {soundsEnabled && (
+                  <div className="space-y-4 pl-4 border-l-2 border-muted">
+                    <div className="space-y-2">
+                      <Label htmlFor="sound-volume">Sound Volume: {Math.round(soundVolume)}%</Label>
+                      <Slider
+                        id="sound-volume"
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={[soundVolume]}
+                        onValueChange={(value) => {
+                          const newVolume = value[0];
+                          setSoundVolumeState(newVolume);
+                          setNotificationVolume(newVolume / 100); // Convert back to 0-1 range
+                        }}
+                        className="w-full"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Test Sounds</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Click the buttons below to test different notification sounds
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => playNotificationSound()}
+                        >
+                          Test Notification
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => playSuccessSound()}
+                        >
+                          Test Success
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => playErrorSound()}
+                        >
+                          Test Error
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Browser Notifications */}
+              <div className="space-y-4 pt-4 border-t">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label htmlFor="browser-notifications">Browser Notifications</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Show notifications in your browser even when the app is not focused
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Status: {isBrowserNotificationsEnabled() ? "✅ Enabled" : "❌ Disabled"}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      const granted = await requestBrowserNotificationPermission();
+                      if (granted) {
+                        toast.success("Browser notifications enabled!");
+                      } else {
+                        toast.error("Browser notifications denied or not supported");
+                      }
+                    }}
+                  >
+                    {isBrowserNotificationsEnabled() ? "Permission Granted" : "Request Permission"}
+                  </Button>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

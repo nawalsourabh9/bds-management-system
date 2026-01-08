@@ -6,7 +6,7 @@ import { toast } from "@/hooks/use-toast";
 import { useTaskDocumentUpload } from "@/hooks/use-task-document-upload";
 import { formatDateForInput } from "@/utils/dateUtils";
 import { useAuth } from "@/hooks/use-auth";
-import { useNotifications } from "@/hooks/use-notifications";
+import { useNotifications } from "@/hooks/use-notifications.tsx";
 
 interface TaskPayload {
   title: string;
