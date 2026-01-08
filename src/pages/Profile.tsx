@@ -550,7 +550,7 @@ export default function Profile() {
                   )}
                   <div>
                     <Label className="text-xs text-muted-foreground">Applies To</Label>
-                    <p className="font-medium">
+                    <div className="font-medium">
                       {positionInfo.applies_to_all_departments ? (
                         <Badge className="bg-blue-100 text-blue-800">All Departments</Badge>
                       ) : positionInfo.departments.length > 0 ? (
@@ -558,7 +558,7 @@ export default function Profile() {
                       ) : (
                         <Badge variant="outline" className="text-gray-500">Not assigned to any department</Badge>
                       )}
-                    </p>
+                    </div>
                   </div>
                 </div>
               </CardContent>

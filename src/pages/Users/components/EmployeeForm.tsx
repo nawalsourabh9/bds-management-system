@@ -313,7 +313,7 @@ export function EmployeeForm({
               <FormItem>
                 <FormLabel>Phone Number</FormLabel>
                 <FormControl>
-                  <Input placeholder="+1 (123) 456-7890" {...field} />
+                  <Input placeholder="+1 (123) 456-7890" {...field} value={field.value || ""} />
                 </FormControl>
                 <FormMessage />
               </FormItem>

@@ -429,17 +429,22 @@ export const fastapiService = {
   },
 
   async deleteUser(userId: string) {
+    const token = localStorage.getItem('token');
     const response = await fetch(`${API_BASE}/api/v1/users/${userId}`, {
       method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
     });
-    
+
     if (!response.ok) {
       const errorData = await response.json();
       throw new Error(errorData.detail || `Delete user failed: ${response.statusText}`);
     }
-    
-        return response.json();
-    },
+
+    return response.json();
+  },
 
     // Position Management
     async getPositions(departmentId?: string) {

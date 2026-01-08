@@ -1,5 +1,5 @@
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { EmployeeForm } from "./EmployeeForm";
@@ -24,7 +24,8 @@ export function EditEmployeeDialog({ isOpen, setIsOpen, employee, onSubmit, empl
       department: "",
       employeeId: "",
       position: undefined,
-      status: "Active"
+      status: "Active",
+      phone: ""
     }
   });
 
@@ -66,6 +67,9 @@ export function EditEmployeeDialog({ isOpen, setIsOpen, employee, onSubmit, empl
       <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Employee</DialogTitle>
+          <DialogDescription>
+            Update employee information and permissions.
+          </DialogDescription>
         </DialogHeader>
         <EmployeeForm 
           form={form} 
