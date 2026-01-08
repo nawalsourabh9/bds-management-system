@@ -1,5 +1,6 @@
 
-import { 
+import { useState, useEffect } from "react";
+import {
   Sidebar as ShadcnSidebar,
   SidebarContent,
   SidebarGroup,
@@ -91,8 +92,16 @@ export function AppSidebar() {
     <ShadcnSidebar>
       <SidebarContent>
         <div className="px-3 py-4">
-          <h2 className="text-lg font-semibold text-eqms-blue">BDS Manufacturing</h2>
-          <p className="text-xs text-muted-foreground">IATF Compliant Quality Management System</p>
+          <div className="mb-4 flex justify-center">
+            <img
+              src="/lovable-uploads/horizontal-title.png"
+              alt="Nordic Design E-QMS"
+              className="w-32 h-auto object-contain"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground text-center">E-QMS</p>
+          <p className="text-xs text-muted-foreground text-center">for</p>
+          <p className="text-xs font-medium text-center text-eqms-blue">BDS Manufacturing</p>
         </div>
         
         <SidebarGroup>

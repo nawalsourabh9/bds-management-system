@@ -123,6 +123,6 @@ class Settings(BaseSettings):
     SMTP_USERNAME: Optional[str] = None
     SMTP_PASSWORD: Optional[str] = None
     FROM_EMAIL: str = "noreply@bdsmanufacturing.in"
-    FROM_NAME: str = "BDS Management System"
+    FROM_NAME: str = "Nordic Design E-QMS"
 
 settings = Settings()

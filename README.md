@@ -1,7 +1,7 @@
 
-# BDS Management System
+# Nordic Design E-QMS
 
-A comprehensive task management system designed for BDS Manufacturing with Indian names, real-time status updates, and Azure integration.
+A comprehensive electronic quality management system designed for Nordic Design with real-time status updates, and Azure integration.
 
 ## 🚀 Quick Start
 

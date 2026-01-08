@@ -1089,4 +1089,45 @@ export const fastapiService = {
     
     return response.json();
   },
+
+  // Company management
+  async getCompanyInfo() {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE}/api/v1/company`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const error: any = new Error(`Get company info failed: ${response.statusText || response.status}`);
+      error.status = response.status;
+      error.response = { status: response.status };
+      throw error;
+    }
+
+    return response.json();
+  },
+
+  async updateCompanyInfo(companyData: any) {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE}/api/v1/company`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(companyData),
+    });
+
+    if (!response.ok) {
+      const error: any = new Error(`Update company info failed: ${response.statusText || response.status}`);
+      error.status = response.status;
+      error.response = { status: response.status };
+      throw error;
+    }
+
+    return response.json();
+  },
 };

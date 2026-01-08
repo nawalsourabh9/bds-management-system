@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from datetime import datetime, timedelta
 import jwt
 from functools import lru_cache
@@ -28,6 +29,13 @@ from fastapi import Request
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Security
+security = HTTPBearer()
+
+def get_token_from_header(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Extract token from Authorization header"""
+    return credentials.credentials
 
 # Helper function to get admin/manager/superadmin users for notifications
 def get_admin_users_for_notification():
@@ -293,7 +301,7 @@ def parse_attachments_required(value):
     return False
 
 app = FastAPI(
-    title="BDS Management System",
+    title="Nordic Design E-QMS",
     description="Business Document System with QMS",
     version="1.0.0"
 )
@@ -311,7 +319,7 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup_event():
     """Startup event - initialize scheduler and test database connection"""
-    logger.info("BDS Management System starting up...")
+    logger.info("Nordic Design E-QMS starting up...")
     
     # Test database connection
     try:
@@ -335,7 +343,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Shutdown event - cleanup scheduler if running"""
-    logger.info("BDS Management System shutting down...")
+    logger.info("Nordic Design E-QMS shutting down...")
     
     if SCHEDULER_AVAILABLE:
         try:
@@ -392,7 +400,7 @@ if settings.CELERY_WORKER:
 
 @app.get("/")
 async def root():
-    return {"message": "BDS Management System API"}
+    return {"message": "Nordic Design E-QMS API"}
 
 @app.get("/debug/db-config")
 async def debug_db_config():
@@ -3576,6 +3584,231 @@ async def execute_sql_script(sql_data: dict, request: Request):
     except Exception as e:
         logger.error(f"Error executing SQL script: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+# Company Settings Endpoints
+@app.get("/api/v1/company")
+async def get_company_info(token: str = Depends(get_token_from_header)):
+    """Get current company information"""
+    try:
+        payload = verify_token(token)
+        user_id = payload.get("sub")
+
+        conn = db_service.get_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # First check if user has company_id
+            cur.execute("SELECT company_id FROM users WHERE id = %s", (user_id,))
+            user_record = cur.fetchone()
+
+            if user_record and user_record.get("company_id"):
+                # User has company_id, get company info
+                cur.execute("""
+                    SELECT c.id, c.name, c.display_name, c.description, c.industry,
+                           c.website, c.address_street, c.address_city, c.address_state,
+                           c.address_postal_code, c.address_country, c.phone, c.email,
+                           c.logo_url, c.primary_color, c.secondary_color, c.timezone,
+                           c.language, c.is_active, c.subscription_plan, c.max_users,
+                           c.storage_limit_gb, c.created_at, c.updated_at
+                    FROM companies c
+                    WHERE c.id = %s
+                """, (user_record["company_id"],))
+            else:
+                # User has no company_id, assign to default company and return it
+                # Get default company
+                cur.execute("""
+                    SELECT id, name, display_name, description, industry, website,
+                           address_street, address_city, address_state,
+                           address_postal_code, address_country, phone, email,
+                           logo_url, primary_color, secondary_color, timezone,
+                           language, is_active, subscription_plan, max_users,
+                           storage_limit_gb, created_at, updated_at
+                    FROM companies
+                    WHERE name = 'system-default'
+                    LIMIT 1
+                """)
+                company = cur.fetchone()
+
+                # Assign user to default company if not already assigned
+                if company:
+                    cur.execute("""
+                        UPDATE users SET company_id = %s, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s AND company_id IS NULL
+                    """, (company["id"], user_id))
+                    conn.commit()
+
+            company = cur.fetchone()
+            if not company:
+                raise HTTPException(status_code=404, detail="Company not found")
+
+            return dict(company)
+
+    except HTTPException:
+        # Re-raise HTTP exceptions (like 401 from verify_token)
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching company info: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.put("/api/v1/company")
+async def update_company_info(
+    company_data: dict,
+    token: str = Depends(get_token_from_header)
+):
+    """Update company information"""
+    try:
+        payload = verify_token(token)
+        user_id = payload.get("sub")
+
+        # Check if user has admin/superadmin role
+        user_role = payload.get("role", "").lower()
+        if user_role not in ["admin", "superadmin"]:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+        conn = db_service.get_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Get user's company_id
+            cur.execute("SELECT company_id FROM users WHERE id = %s", (user_id,))
+            user_record = cur.fetchone()
+
+            company_id = None
+            if user_record and user_record.get("company_id"):
+                company_id = user_record["company_id"]
+            else:
+                # User has no company_id, assign to default company
+                cur.execute("""
+                    SELECT id FROM companies
+                    WHERE name = 'system-default'
+                    LIMIT 1
+                """)
+                default_company = cur.fetchone()
+                if default_company:
+                    company_id = default_company["id"]
+                    # Assign user to default company
+                    cur.execute("""
+                        UPDATE users SET company_id = %s, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s
+                    """, (company_id, user_id))
+                    conn.commit()
+                else:
+                    raise HTTPException(status_code=404, detail="Default company not found")
+
+            if not company_id:
+                raise HTTPException(status_code=404, detail="User not associated with a company")
+
+            # Update company information
+            update_fields = []
+            update_values = []
+
+            allowed_fields = [
+                "display_name", "description", "industry", "website",
+                "address_street", "address_city", "address_state",
+                "address_postal_code", "address_country", "phone", "email",
+                "logo_url", "primary_color", "secondary_color", "timezone",
+                "language"
+            ]
+
+            for field in allowed_fields:
+                if field in company_data:
+                    update_fields.append(f"{field} = %s")
+                    update_values.append(company_data[field])
+
+            if not update_fields:
+                raise HTTPException(status_code=400, detail="No valid fields to update")
+
+            update_values.append(company_id)
+            update_query = f"""
+                UPDATE companies
+                SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+                RETURNING id, name, display_name, description, updated_at
+            """
+
+            cur.execute(update_query, update_values)
+            updated_company = cur.fetchone()
+            conn.commit()
+
+            if not updated_company:
+                raise HTTPException(status_code=404, detail="Company not found")
+
+            logger.info(f"Company {updated_company['name']} updated by user {user_id}")
+            return {
+                "message": "Company information updated successfully",
+                "company": dict(updated_company)
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating company info: {e}")
+        conn.rollback()
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.post("/api/v1/company")
+async def create_company(
+    company_data: dict,
+    token: str = Depends(get_token_from_header)
+):
+    """Create a new company (Superadmin only)"""
+    try:
+        payload = verify_token(token)
+        user_id = payload.get("sub")
+
+        # Only superadmin can create companies
+        user_role = payload.get("role", "").lower()
+        if user_role != "superadmin":
+            raise HTTPException(status_code=403, detail="Only superadmin can create companies")
+
+        required_fields = ["name", "display_name"]
+        for field in required_fields:
+            if field not in company_data or not company_data[field]:
+                raise HTTPException(status_code=400, detail=f"Field '{field}' is required")
+
+        conn = db_service.get_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Check if company name already exists
+            cur.execute("SELECT id FROM companies WHERE name = %s", (company_data["name"],))
+            if cur.fetchone():
+                raise HTTPException(status_code=409, detail="Company name already exists")
+
+            # Create company with defaults
+            cur.execute("""
+                INSERT INTO companies (
+                    name, display_name, description, industry, website, email,
+                    primary_color, secondary_color, timezone, language,
+                    subscription_plan, max_users, storage_limit_gb
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id, name, display_name, created_at
+            """, (
+                company_data["name"],
+                company_data["display_name"],
+                company_data.get("description", ""),
+                company_data.get("industry", ""),
+                company_data.get("website", ""),
+                company_data.get("email", ""),
+                company_data.get("primary_color", "#FF6B35"),
+                company_data.get("secondary_color", "#F7931E"),
+                company_data.get("timezone", "UTC"),
+                company_data.get("language", "en"),
+                company_data.get("subscription_plan", "basic"),
+                company_data.get("max_users", 50),
+                company_data.get("storage_limit_gb", 5)
+            ))
+
+            new_company = cur.fetchone()
+            conn.commit()
+
+            logger.info(f"Company {new_company['name']} created by user {user_id}")
+            return {
+                "message": "Company created successfully",
+                "company": dict(new_company)
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating company: {e}")
+        conn.rollback()
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

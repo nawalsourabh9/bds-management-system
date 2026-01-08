@@ -25,6 +25,7 @@ import MindMapTasks from "@/pages/MindMapTasks";
 import MindMapProcesses from "@/pages/MindMapProcesses";
 import Profile from "@/pages/Profile";
 import Help from "@/pages/Help";
+import Settings from "@/pages/Settings";
 import EmailTest from "@/pages/EmailTest";
 import InviteUser from "@/pages/InviteUser";
 import NotFound from "@/pages/NotFound";
@@ -206,6 +207,7 @@ export const AppRoutes = () => {
         { path: "/mind-map/processes", element: <MindMapProcesses />, adminOnly: false },
         { path: "/profile", element: <Profile />, adminOnly: false },
         { path: "/help", element: <Help />, adminOnly: false },
+        { path: "/settings", element: <Settings />, adminOnly: false },
         { path: "/email-test", element: <EmailTest />, adminOnly: true }
       ].map(({ path, element, adminOnly, managerOrAdminOnly }) => (
         <Route key={path} path={path} element={

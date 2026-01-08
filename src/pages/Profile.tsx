@@ -501,6 +501,11 @@ export default function Profile() {
                   <span className="text-muted-foreground">Member since:</span>
                   <span>{new Date(profile.created_at).toLocaleDateString()}</span>
                 </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <Building2 className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-muted-foreground">Company:</span>
+                  <span className="font-medium">BDS Manufacturing</span>
+                </div>
               </div>
             </div>
           </div>

@@ -66,15 +66,19 @@ const Login = () => {
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="mx-auto w-16 h-16 bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl flex items-center justify-center mb-4"
+              className="mx-auto w-20 h-20 bg-white rounded-2xl flex items-center justify-center mb-4 shadow-lg"
             >
-              <Lock className="h-8 w-8 text-white" />
+              <img
+                src="/lovable-uploads/lastest_logo.png"
+                alt="Nordic Design E-QMS Logo"
+                className="w-16 h-16 object-contain"
+              />
             </motion.div>
             <CardTitle className="text-3xl font-bold gradient-text">
               Welcome Back
             </CardTitle>
             <CardDescription className="text-base">
-              Sign in to your BDS Management System account
+              Sign in to your Nordic Design E-QMS account
             </CardDescription>
           </CardHeader>
         <form onSubmit={handleSubmit}>

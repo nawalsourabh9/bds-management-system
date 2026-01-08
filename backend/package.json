@@ -1,7 +1,7 @@
 {
-  "name": "bds-backend",
+  "name": "nordic-eqms-backend",
   "version": "1.0.1",
-  "description": "BDS Management System Backend",
+  "description": "Nordic Design E-QMS Backend",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
