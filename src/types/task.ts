@@ -1,5 +1,20 @@
 import { TaskDocument } from "@/types/document";
 
+export interface Delegation {
+  id: string;
+  taskId: string;
+  delegatedByUserId: string;
+  delegatedByUserName: string;
+  delegatedToUserId?: string;  // null if offline worker
+  delegatedToUserName?: string; // null if offline worker
+  offlineAssigneeName?: string;        // set if offline/shop floor worker
+  offlineAssigneeDepartment?: string;  // set if offline worker
+  delegationLevel: number;
+  notes?: string;
+  createdAt: string;
+  isActive: boolean;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -48,6 +63,16 @@ export interface Task {
   rejectionReason?: string;
   departmentHeadId?: string;
   comments?: string; // Added field for status comments
+  delegations?: Delegation[]; // Delegation chain
+  currentDelegatedTo?: {
+    delegatedToUserId?: string;
+    delegatedToName?: string;
+    offlineAssigneeName?: string;
+    offlineAssigneeDepartment?: string;
+    delegationLevel?: number;
+  };
+  createdBy?: string; // User ID who created the task
+  createdByName?: string; // Name of user who created the task
 }
 
 // Team member interface for organization management

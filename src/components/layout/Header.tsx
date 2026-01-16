@@ -35,7 +35,20 @@ export function Header() {
   const getInitials = () => {
     if (!user) return "U";
     
-    // EmployeeData
+    // Try to get first_name and last_name first (from backend)
+    const userAny = user as any;
+    if (userAny.first_name) {
+      const firstInitial = userAny.first_name[0]?.toUpperCase() || "";
+      const lastInitial = userAny.last_name?.[0]?.toUpperCase() || "";
+      if (firstInitial && lastInitial) {
+        return firstInitial + lastInitial;
+      }
+      if (firstInitial) {
+        return firstInitial;
+      }
+    }
+    
+    // Fallback to name field (EmployeeData)
     const name = (user as EmployeeData).name || "";
     const nameParts = name.split(' ');
     if (nameParts.length >= 2) {
@@ -43,27 +56,49 @@ export function Header() {
     }
     return name.substring(0, 1).toUpperCase() || "U";
   };
+
+  const getUserDisplayName = () => {
+    if (!user) return "My Account";
+    
+    // Try to get first_name and last_name first (from backend)
+    const userAny = user as any;
+    if (userAny.first_name) {
+      const firstName = userAny.first_name || "";
+      const lastName = userAny.last_name || "";
+      if (firstName && lastName) {
+        return `${firstName} ${lastName}`;
+      }
+      if (firstName) {
+        return firstName;
+      }
+    }
+    
+    // Fallback to name field (EmployeeData)
+    const name = (user as EmployeeData).name || "";
+    return name || "My Account";
+  };
   
   return (
     <header className="sticky top-0 z-30 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="excel-toolbar flex h-16 items-center justify-between px-4">
         <div className="flex items-center gap-2">
           <SidebarTrigger />
+          <h2 className="text-2xl font-medium text-orange-600 hidden md:block">BDS Manufacturing</h2>
+        </div>
+
+        <div className="flex items-center gap-3">
           <div className="hidden md:block">
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 type="search"
                 placeholder="Search..."
-                className="w-[200px] pl-8 md:w-[300px] rounded-sm bg-white border-border focus-visible:ring-primary"
+                className="w-[300px] pl-8 md:w-[400px] lg:w-[500px] rounded-sm bg-white border-border focus-visible:ring-primary"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
           </div>
-        </div>
-
-        <div className="flex items-center gap-3">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="icon" className="relative border-border hover:bg-accent">
@@ -112,8 +147,10 @@ export function Header() {
             <DropdownMenuContent align="end" className="bg-background border-border">
               <DropdownMenuLabel>
                 <div className="flex flex-col">
-                  <span>My Account</span>
-                  <span className="text-xs text-muted-foreground font-normal">BDS Manufacturing</span>
+                  <span>{getUserDisplayName()}</span>
+                  <span className="text-xs text-muted-foreground font-normal">
+                    {user ? ((user as any).role || 'User').charAt(0).toUpperCase() + ((user as any).role || 'user').slice(1) : 'BDS Manufacturing'}
+                  </span>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />

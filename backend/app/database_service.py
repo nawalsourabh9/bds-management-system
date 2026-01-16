@@ -50,8 +50,8 @@ class DatabaseService:
                 if has_task_id_column:
                     # Use task_id column if it exists
                     cur.execute("""
-                        INSERT INTO notifications (user_id, title, message, type, task_id, is_read, created_at)
-                        VALUES (%(user_id)s, %(title)s, %(message)s, %(type)s, %(task_id)s, FALSE, NOW())
+                        INSERT INTO notifications (id, user_id, title, message, type, task_id, is_read, created_at)
+                        VALUES (gen_random_uuid(), %(user_id)s, %(title)s, %(message)s, %(type)s, %(task_id)s, FALSE, NOW())
                         RETURNING id;
                     """, {
                         "user_id": user_id,
@@ -67,8 +67,8 @@ class DatabaseService:
                         final_message = f"{message}|TASK_ID:{task_id}"
                     
                     cur.execute("""
-                        INSERT INTO notifications (user_id, title, message, type, is_read, created_at)
-                        VALUES (%(user_id)s, %(title)s, %(message)s, %(type)s, FALSE, NOW())
+                        INSERT INTO notifications (id, user_id, title, message, type, is_read, created_at)
+                        VALUES (gen_random_uuid(), %(user_id)s, %(title)s, %(message)s, %(type)s, FALSE, NOW())
                         RETURNING id;
                     """, {
                         "user_id": user_id,
@@ -77,9 +77,22 @@ class DatabaseService:
                         "type": notification_type
                     })
                 
-                notification_id = cur.fetchone()[0]
+                result = cur.fetchone()
+                if not result:
+                    raise Exception("Failed to create notification - no ID returned")
+                # Handle both tuple and dict results
+                if isinstance(result, tuple):
+                    notification_id = result[0]
+                elif isinstance(result, dict):
+                    notification_id = result.get('id')
+                else:
+                    notification_id = result[0] if hasattr(result, '__getitem__') else None
+                
+                if not notification_id:
+                    raise Exception(f"Failed to extract notification ID from result: {result}")
+                
                 conn.commit()
-                logger.info(f"Created notification {notification_id} for user {user_id}, task_id: {task_id}")
+                logger.info(f"✅ Created notification {notification_id} for user {user_id}, task_id: {task_id}")
                 return notification_id
         except Exception as e:
             logger.error(f"Error creating notification: {e}", exc_info=True)
@@ -279,7 +292,7 @@ class DatabaseService:
                             id, employee_id, email, password_hash, first_name, last_name, role, 
                             department_id, is_active, created_at, updated_at
                         FROM users 
-                        WHERE email = %s AND is_active = true
+                        WHERE LOWER(TRIM(email)) = LOWER(TRIM(%s)) AND is_active = true
                     """, (email,))
                 else:
                     # Fallback for databases without password_hash column
@@ -288,7 +301,7 @@ class DatabaseService:
                             id, employee_id, email, first_name, last_name, role, 
                             department_id, is_active, created_at, updated_at
                         FROM users 
-                        WHERE email = %s AND is_active = true
+                        WHERE LOWER(TRIM(email)) = LOWER(TRIM(%s)) AND is_active = true
                     """, (email,))
                     # Add None for password_hash
                     user = cur.fetchone()
@@ -362,44 +375,119 @@ class DatabaseService:
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Check if task_delegations table exists
                 cur.execute("""
-                    SELECT 
-                        t.id, t.title, t.description, t.status, t.priority,
-                        t.department_id, t.assignee_id, t.created_by,
-                        t.start_date,
-                        to_char(t.due_date, 'YYYY-MM-DD') as due_date,
-                        t.completed_date,
-                        t.is_recurring, t.recurring_frequency, t.is_customer_related, t.customer_name,
-                        t.customer_email, t.tags, t.created_at, t.updated_at, t.parent_task_id,
-                        t.attachments_required,
-                        -- Assignee information
-                        u.email as assignee_email,
-                        CASE 
-                            WHEN u.first_name IS NOT NULL AND u.last_name IS NOT NULL 
-                            THEN CONCAT(u.first_name, ' ', u.last_name)
-                            ELSE NULL
-                        END as assignee_name,
-                        u.employee_id as assignee_employee_id,
-                        -- Assignee position and reports-to information
-                        pos.name as assignee_position_name,
-                        CASE 
-                            WHEN reports_to.first_name IS NOT NULL AND reports_to.last_name IS NOT NULL 
-                            THEN CONCAT(reports_to.first_name, ' ', reports_to.last_name)
-                            ELSE NULL
-                        END as assignee_reports_to_name,
-                        -- Department information
-                        d.name as department_name,
-                        -- Creator information
-                        creator.email as created_by_email,
-                        CONCAT(creator.first_name, ' ', creator.last_name) as created_by_name
-                    FROM tasks t
-                    LEFT JOIN users u ON t.assignee_id = u.id
-                    LEFT JOIN positions pos ON u.position_id = pos.id
-                    LEFT JOIN users reports_to ON u.reports_to_id = reports_to.id
-                    LEFT JOIN departments d ON t.department_id = d.id
-                    LEFT JOIN users creator ON t.created_by = creator.id
-                    ORDER BY t.created_at DESC
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'task_delegations'
+                    ) as exists
                 """)
+                result = cur.fetchone()
+                has_delegations_table = result['exists'] if result else False
+                
+                if has_delegations_table:
+                    # Query with delegation information
+                    cur.execute("""
+                        SELECT 
+                            t.id, t.title, t.description, t.status, t.priority,
+                            t.department_id, t.assignee_id, t.created_by,
+                            t.start_date,
+                            to_char(t.due_date, 'YYYY-MM-DD') as due_date,
+                            t.completed_date,
+                            t.is_recurring, t.recurring_frequency, t.is_customer_related, t.customer_name,
+                            t.customer_email, t.tags, t.created_at, t.updated_at, t.parent_task_id,
+                            t.attachments_required,
+                            -- Assignee information
+                            u.email as assignee_email,
+                            CASE 
+                                WHEN u.first_name IS NOT NULL AND u.last_name IS NOT NULL 
+                                THEN CONCAT(u.first_name, ' ', u.last_name)
+                                ELSE NULL
+                            END as assignee_name,
+                            u.employee_id as assignee_employee_id,
+                            -- Assignee position and reports-to information
+                            pos.name as assignee_position_name,
+                            CASE 
+                                WHEN reports_to.first_name IS NOT NULL AND reports_to.last_name IS NOT NULL 
+                                THEN CONCAT(reports_to.first_name, ' ', reports_to.last_name)
+                                ELSE NULL
+                            END as assignee_reports_to_name,
+                            -- Department information
+                            d.name as department_name,
+                            -- Creator information
+                            creator.email as created_by_email,
+                            CONCAT(creator.first_name, ' ', creator.last_name) as created_by_name,
+                            -- Current delegation information
+                            td.delegated_to_user_id as current_delegated_to_user_id,
+                            CASE 
+                                WHEN td.delegated_to_user_id IS NOT NULL 
+                                THEN CONCAT(du.first_name, ' ', du.last_name)
+                                ELSE td.offline_assignee_name
+                            END as current_delegated_to_name,
+                            td.offline_assignee_department as current_delegated_to_department,
+                            td.delegation_level as current_delegation_level
+                        FROM tasks t
+                        LEFT JOIN users u ON t.assignee_id = u.id
+                        LEFT JOIN positions pos ON u.position_id = pos.id
+                        LEFT JOIN users reports_to ON u.reports_to_id = reports_to.id
+                        LEFT JOIN departments d ON t.department_id = d.id
+                        LEFT JOIN users creator ON t.created_by = creator.id
+                        LEFT JOIN LATERAL (
+                            SELECT delegated_to_user_id, offline_assignee_name, offline_assignee_department, delegation_level
+                            FROM task_delegations
+                            WHERE task_id = t.id AND is_active = TRUE
+                            ORDER BY delegation_level DESC
+                            LIMIT 1
+                        ) td ON TRUE
+                        LEFT JOIN users du ON td.delegated_to_user_id = du.id
+                        ORDER BY t.created_at DESC
+                    """)
+                else:
+                    # Query without delegation information (backward compatible)
+                    cur.execute("""
+                        SELECT 
+                            t.id, t.title, t.description, t.status, t.priority,
+                            t.department_id, t.assignee_id, t.created_by,
+                            t.start_date,
+                            to_char(t.due_date, 'YYYY-MM-DD') as due_date,
+                            t.completed_date,
+                            t.is_recurring, t.recurring_frequency, t.is_customer_related, t.customer_name,
+                            t.customer_email, t.tags, t.created_at, t.updated_at, t.parent_task_id,
+                            t.attachments_required,
+                            -- Assignee information
+                            u.email as assignee_email,
+                            CASE 
+                                WHEN u.first_name IS NOT NULL AND u.last_name IS NOT NULL 
+                                THEN CONCAT(u.first_name, ' ', u.last_name)
+                                ELSE NULL
+                            END as assignee_name,
+                            u.employee_id as assignee_employee_id,
+                            -- Assignee position and reports-to information
+                            pos.name as assignee_position_name,
+                            CASE 
+                                WHEN reports_to.first_name IS NOT NULL AND reports_to.last_name IS NOT NULL 
+                                THEN CONCAT(reports_to.first_name, ' ', reports_to.last_name)
+                                ELSE NULL
+                            END as assignee_reports_to_name,
+                            -- Department information
+                            d.name as department_name,
+                            -- Creator information
+                            creator.email as created_by_email,
+                            CONCAT(creator.first_name, ' ', creator.last_name) as created_by_name,
+                            -- No delegation information (table doesn't exist yet)
+                            NULL as current_delegated_to_user_id,
+                            NULL as current_delegated_to_name,
+                            NULL as current_delegated_to_department,
+                            NULL as current_delegation_level
+                        FROM tasks t
+                        LEFT JOIN users u ON t.assignee_id = u.id
+                        LEFT JOIN positions pos ON u.position_id = pos.id
+                        LEFT JOIN users reports_to ON u.reports_to_id = reports_to.id
+                        LEFT JOIN departments d ON t.department_id = d.id
+                        LEFT JOIN users creator ON t.created_by = creator.id
+                        ORDER BY t.created_at DESC
+                    """)
                 tasks = cur.fetchall()
                 return [dict(task) for task in tasks]
         except Exception as e:
@@ -415,46 +503,205 @@ class DatabaseService:
         try:
             conn = self.get_connection()
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Check if task_delegations table exists
                 cur.execute("""
-                    SELECT 
-                        t.id, t.title, t.description, t.status, t.priority,
-                        t.department_id, t.assignee_id, t.created_by,
-                        t.start_date, t.due_date, t.completed_date,
-                        t.is_recurring, t.recurring_frequency, t.is_customer_related, t.customer_name,
-                        t.customer_email, t.tags, t.created_at, t.updated_at, t.parent_task_id,
-                        t.attachments_required,
-                        -- Assignee information
-                        u.email as assignee_email,
-                        CASE 
-                            WHEN u.first_name IS NOT NULL AND u.last_name IS NOT NULL 
-                            THEN CONCAT(u.first_name, ' ', u.last_name)
-                            ELSE NULL
-                        END as assignee_name,
-                        u.employee_id as assignee_employee_id,
-                        -- Assignee position and reports-to information
-                        pos.name as assignee_position_name,
-                        CASE 
-                            WHEN reports_to.first_name IS NOT NULL AND reports_to.last_name IS NOT NULL 
-                            THEN CONCAT(reports_to.first_name, ' ', reports_to.last_name)
-                            ELSE NULL
-                        END as assignee_reports_to_name,
-                        -- Department information
-                        d.name as department_name,
-                        -- Creator information
-                        creator.email as created_by_email,
-                        CONCAT(creator.first_name, ' ', creator.last_name) as created_by_name
-                    FROM tasks t
-                    LEFT JOIN users u ON t.assignee_id = u.id
-                    LEFT JOIN positions pos ON u.position_id = pos.id
-                    LEFT JOIN users reports_to ON u.reports_to_id = reports_to.id
-                    LEFT JOIN departments d ON t.department_id = d.id
-                    LEFT JOIN users creator ON t.created_by = creator.id
-                    WHERE t.id = %s
-                """, (task_id,))
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'task_delegations'
+                    ) as exists
+                """)
+                result = cur.fetchone()
+                has_delegations_table = result['exists'] if result else False
+                
+                if has_delegations_table:
+                    # Query with delegation information
+                    cur.execute("""
+                        SELECT 
+                            t.id, t.title, t.description, t.status, t.priority,
+                            t.department_id, t.assignee_id, t.created_by,
+                            t.start_date, t.due_date, t.completed_date,
+                            t.is_recurring, t.recurring_frequency, t.is_customer_related, t.customer_name,
+                            t.customer_email, t.tags, t.created_at, t.updated_at, t.parent_task_id,
+                            t.attachments_required,
+                            -- Assignee information
+                            u.email as assignee_email,
+                            CASE 
+                                WHEN u.first_name IS NOT NULL AND u.last_name IS NOT NULL 
+                                THEN CONCAT(u.first_name, ' ', u.last_name)
+                                ELSE NULL
+                            END as assignee_name,
+                            u.employee_id as assignee_employee_id,
+                            -- Assignee position and reports-to information
+                            pos.name as assignee_position_name,
+                            CASE 
+                                WHEN reports_to.first_name IS NOT NULL AND reports_to.last_name IS NOT NULL 
+                                THEN CONCAT(reports_to.first_name, ' ', reports_to.last_name)
+                                ELSE NULL
+                            END as assignee_reports_to_name,
+                            -- Department information
+                            d.name as department_name,
+                            -- Creator information
+                            creator.email as created_by_email,
+                            CONCAT(creator.first_name, ' ', creator.last_name) as created_by_name,
+                            -- Current delegation information
+                            td.delegated_to_user_id as current_delegated_to_user_id,
+                            CASE 
+                                WHEN td.delegated_to_user_id IS NOT NULL 
+                                THEN CONCAT(du.first_name, ' ', du.last_name)
+                                ELSE td.offline_assignee_name
+                            END as current_delegated_to_name,
+                            td.offline_assignee_department as current_delegated_to_department,
+                            td.delegation_level as current_delegation_level
+                        FROM tasks t
+                        LEFT JOIN users u ON t.assignee_id = u.id
+                        LEFT JOIN positions pos ON u.position_id = pos.id
+                        LEFT JOIN users reports_to ON u.reports_to_id = reports_to.id
+                        LEFT JOIN departments d ON t.department_id = d.id
+                        LEFT JOIN users creator ON t.created_by = creator.id
+                        LEFT JOIN LATERAL (
+                            SELECT delegated_to_user_id, offline_assignee_name, offline_assignee_department, delegation_level
+                            FROM task_delegations
+                            WHERE task_id = t.id AND is_active = TRUE
+                            ORDER BY delegation_level DESC
+                            LIMIT 1
+                        ) td ON TRUE
+                        LEFT JOIN users du ON td.delegated_to_user_id = du.id
+                        WHERE t.id = %s
+                    """, (task_id,))
+                else:
+                    # Query without delegation information (backward compatible)
+                    cur.execute("""
+                        SELECT 
+                            t.id, t.title, t.description, t.status, t.priority,
+                            t.department_id, t.assignee_id, t.created_by,
+                            t.start_date, t.due_date, t.completed_date,
+                            t.is_recurring, t.recurring_frequency, t.is_customer_related, t.customer_name,
+                            t.customer_email, t.tags, t.created_at, t.updated_at, t.parent_task_id,
+                            t.attachments_required,
+                            -- Assignee information
+                            u.email as assignee_email,
+                            CASE 
+                                WHEN u.first_name IS NOT NULL AND u.last_name IS NOT NULL 
+                                THEN CONCAT(u.first_name, ' ', u.last_name)
+                                ELSE NULL
+                            END as assignee_name,
+                            u.employee_id as assignee_employee_id,
+                            -- Assignee position and reports-to information
+                            pos.name as assignee_position_name,
+                            CASE 
+                                WHEN reports_to.first_name IS NOT NULL AND reports_to.last_name IS NOT NULL 
+                                THEN CONCAT(reports_to.first_name, ' ', reports_to.last_name)
+                                ELSE NULL
+                            END as assignee_reports_to_name,
+                            -- Department information
+                            d.name as department_name,
+                            -- Creator information
+                            creator.email as created_by_email,
+                            CONCAT(creator.first_name, ' ', creator.last_name) as created_by_name,
+                            -- No delegation information (table doesn't exist yet)
+                            NULL as current_delegated_to_user_id,
+                            NULL as current_delegated_to_name,
+                            NULL as current_delegated_to_department,
+                            NULL as current_delegation_level
+                        FROM tasks t
+                        LEFT JOIN users u ON t.assignee_id = u.id
+                        LEFT JOIN positions pos ON u.position_id = pos.id
+                        LEFT JOIN users reports_to ON u.reports_to_id = reports_to.id
+                        LEFT JOIN departments d ON t.department_id = d.id
+                        LEFT JOIN users creator ON t.created_by = creator.id
+                        WHERE t.id = %s
+                    """, (task_id,))
                 task = cur.fetchone()
                 return dict(task) if task else None
         except Exception as e:
             logger.error(f"Error fetching task by ID: {e}")
+            raise
+        finally:
+            if conn:
+                conn.close()
+
+    def create_task_delegation(self, task_id: str, delegated_by_user_id: str, 
+                               delegated_to_user_id: str = None, 
+                               offline_assignee_name: str = None,
+                               offline_assignee_department: str = None,
+                               notes: str = None):
+        """Create a new task delegation"""
+        conn = None
+        try:
+            conn = self.get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Get the current maximum delegation level for this task
+                cur.execute("""
+                    SELECT COALESCE(MAX(delegation_level), 0) as max_level
+                    FROM task_delegations
+                    WHERE task_id = %s
+                """, (task_id,))
+                result = cur.fetchone()
+                next_level = (result['max_level'] if result else 0) + 1
+                
+                # Mark all previous delegations as inactive
+                cur.execute("""
+                    UPDATE task_delegations
+                    SET is_active = FALSE
+                    WHERE task_id = %s AND is_active = TRUE
+                """, (task_id,))
+                
+                # Create new delegation
+                cur.execute("""
+                    INSERT INTO task_delegations 
+                    (task_id, delegated_by_user_id, delegated_to_user_id, 
+                     offline_assignee_name, offline_assignee_department, 
+                     delegation_level, notes, is_active)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE)
+                    RETURNING id, created_at
+                """, (task_id, delegated_by_user_id, delegated_to_user_id,
+                      offline_assignee_name, offline_assignee_department,
+                      next_level, notes))
+                
+                delegation = cur.fetchone()
+                conn.commit()
+                return dict(delegation) if delegation else None
+        except Exception as e:
+            logger.error(f"Error creating task delegation: {e}")
+            if conn:
+                conn.rollback()
+            raise
+        finally:
+            if conn:
+                conn.close()
+
+    def get_task_delegation_chain(self, task_id: str):
+        """Get full delegation chain for a task"""
+        conn = None
+        try:
+            conn = self.get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT * FROM get_task_delegation_chain(%s)
+                """, (task_id,))
+                delegations = cur.fetchall()
+                return [dict(d) for d in delegations]
+        except Exception as e:
+            logger.error(f"Error fetching task delegation chain: {e}")
+            raise
+        finally:
+            if conn:
+                conn.close()
+
+    def get_current_delegated_assignee(self, task_id: str):
+        """Get the current active delegated assignee for a task"""
+        conn = None
+        try:
+            conn = self.get_connection()
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT * FROM get_current_delegated_assignee(%s)
+                """, (task_id,))
+                result = cur.fetchone()
+                return dict(result) if result else None
+        except Exception as e:
+            logger.error(f"Error fetching current delegated assignee: {e}")
             raise
         finally:
             if conn:

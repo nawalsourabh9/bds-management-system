@@ -64,7 +64,7 @@ const allMenuItems = [
     managerOrAdminOnly: true
   },
   {
-    title: "Department Summary",
+    title: "Dept. Summary",
     icon: BarChart3,
     path: "/department-summary",
     adminOnly: false
@@ -91,17 +91,8 @@ export function AppSidebar() {
   return (
     <ShadcnSidebar>
       <SidebarContent>
-        <div className="px-3 py-4">
-          <div className="mb-4 flex justify-center">
-            <img
-              src="/lovable-uploads/horizontal-title.png"
-              alt="Nordic Design E-QMS"
-              className="w-32 h-auto object-contain"
-            />
-          </div>
-          <p className="text-xs text-muted-foreground text-center">E-QMS</p>
-          <p className="text-xs text-muted-foreground text-center">for</p>
-          <p className="text-xs font-medium text-center text-eqms-blue">BDS Manufacturing</p>
+        <div className="w-full border-b border-border flex items-center justify-start py-4" style={{ minHeight: '64px' }}>
+          <h1 className="text-4xl font-bold text-left px-3 w-full">E-QMS</h1>
         </div>
         
         <SidebarGroup>
@@ -176,6 +167,16 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        <div className="px-3 py-4 mt-auto">
+          <div className="flex justify-start items-start">
+            <img
+              src="/lovable-uploads/horizontal-title.png"
+              alt="Nordic Design E-QMS"
+              className="h-8 w-auto object-contain"
+            />
+          </div>
+        </div>
 
       </SidebarContent>
     </ShadcnSidebar>

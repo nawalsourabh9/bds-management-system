@@ -1,10 +1,11 @@
 
 import React, { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Eye, Edit, Trash2, Clock, CheckCircle, AlertCircle, HelpCircle, Pause, XCircle, Shield, AlertTriangle } from "lucide-react";
+import { MoreHorizontal, Eye, Edit, Trash2, Clock, CheckCircle, AlertCircle, HelpCircle, Pause, XCircle, Shield, AlertTriangle, UserCheck, ArrowRight } from "lucide-react";
 import { Task, TeamMember } from "@/types/task";
 import { TaskDocument } from "@/types/document";
 import { formatDate } from "@/utils/dateUtils";
@@ -16,7 +17,9 @@ import { TaskDocumentBadges } from "./TaskDocumentBadges";
 import TaskRecurringBadge from "./TaskRecurringBadge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { TemplateTaskEditDialog } from "../TemplateTaskEditDialog";
+import TaskDelegation from "../TaskDelegation";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 
 interface TaskTableRowProps {
   task: Task;
@@ -74,6 +77,8 @@ const TaskTableRow: React.FC<TaskTableRowProps> = ({
   const [isTemplateEditOpen, setIsTemplateEditOpen] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [isUpdatingPriority, setIsUpdatingPriority] = useState(false);
+  const [isDelegationOpen, setIsDelegationOpen] = useState(false);
+  const queryClient = useQueryClient();
 
   const handleStatusChange = async (newStatus: string) => {
     if (newStatus === task.status || !onUpdateTask) return;
@@ -149,6 +154,11 @@ const TaskTableRow: React.FC<TaskTableRowProps> = ({
               </span>
             )}
           </div>
+          {task.createdByName && (
+            <span className="text-xs text-muted-foreground">
+              Created by: {task.createdByName}
+            </span>
+          )}
           <div className="flex flex-wrap gap-1">
             <TaskRecurringBadge task={task} />
             <TaskCustomerBadge isCustomerRelated={task.isCustomerRelated} customerName={task.customerName} />
@@ -195,6 +205,17 @@ const TaskTableRow: React.FC<TaskTableRowProps> = ({
                     <span className="text-sm font-medium">{task.assigneeDetails.name}</span>
                     {task.assigneeDetails.employeeId && (
                       <span className="text-xs text-muted-foreground">{task.assigneeDetails.employeeId}</span>
+                    )}
+                    {task.currentDelegatedTo && (
+                      <div className="flex items-center gap-1 mt-1">
+                        <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                        <Badge variant="secondary" className="text-xs">
+                          {task.currentDelegatedTo.delegatedToName || task.currentDelegatedTo.offlineAssigneeName}
+                          {task.currentDelegatedTo.offlineAssigneeName && (
+                            <span className="ml-1 text-muted-foreground">(Offline)</span>
+                          )}
+                        </Badge>
+                      </div>
                     )}
                   </div>
                 </>
@@ -362,6 +383,20 @@ const TaskTableRow: React.FC<TaskTableRowProps> = ({
             <Edit className="h-4 w-4 text-green-600" />
           </Button>
           
+          {/* Delegate Button - Show if user is assignee or current delegated person */}
+          {(isAdmin || currentUserId === task.assignee || 
+            (task.currentDelegatedTo?.delegatedToUserId && currentUserId === task.currentDelegatedTo.delegatedToUserId)) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0 hover:bg-primary/10"
+              onClick={() => setIsDelegationOpen(true)}
+              title="Delegate Task"
+            >
+              <UserCheck className="h-4 w-4 text-blue-600" />
+            </Button>
+          )}
+          
           {/* Delete Button - Only show if admin or assignee */}
           {(isAdmin || currentUserId === task.assignee) && (
             <Button
@@ -403,6 +438,13 @@ const TaskTableRow: React.FC<TaskTableRowProps> = ({
                 <Edit className="h-4 w-4 mr-2" />
                 {isRecurringParent ? "Edit Template" : "Edit Task"}
               </DropdownMenuItem>
+              {(isAdmin || currentUserId === task.assignee || 
+                (task.currentDelegatedTo?.delegatedToUserId && currentUserId === task.currentDelegatedTo.delegatedToUserId)) && (
+                <DropdownMenuItem onClick={() => setIsDelegationOpen(true)}>
+                  <UserCheck className="h-4 w-4 mr-2" />
+                  Delegate Task
+                </DropdownMenuItem>
+              )}
               {(isAdmin || currentUserId === task.assignee) && (
                 <DropdownMenuItem 
                   onClick={() => onDeleteTask(task.id)}
@@ -428,6 +470,16 @@ const TaskTableRow: React.FC<TaskTableRowProps> = ({
           task={task}
         />
       )}
+      <TaskDelegation
+        isOpen={isDelegationOpen}
+        onClose={() => setIsDelegationOpen(false)}
+        task={task}
+        onDelegated={() => {
+          setIsDelegationOpen(false);
+          // Invalidate tasks query to refresh the UI
+          queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        }}
+      />
     </>
   );
 };

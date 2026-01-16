@@ -31,11 +31,24 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Security
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 def get_token_from_header(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Extract token from Authorization header"""
-    return credentials.credentials
+    if not credentials:
+        logger.warning("No authorization credentials provided")
+        raise HTTPException(status_code=401, detail="Authentication required")
+    try:
+        token = credentials.credentials
+        if not token:
+            logger.warning("Empty token in authorization header")
+            raise HTTPException(status_code=401, detail="Invalid authentication token")
+        return token
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error extracting token from header: {e}", exc_info=True)
+        raise HTTPException(status_code=401, detail="Invalid or missing authentication token")
 
 # Helper function to get admin/manager/superadmin users for notifications
 def get_admin_users_for_notification():
@@ -286,13 +299,37 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash"""
     try:
         if not hashed_password or not isinstance(hashed_password, str):
+            logger.warning(f"Password verification failed: invalid hash (type: {type(hashed_password)})")
             return False
         password_bytes = _prepare_password_bytes(plain_password)
         if not password_bytes:
+            logger.warning("Password verification failed: empty password bytes")
             return False
-        return bcrypt.checkpw(password_bytes, hashed_password.encode("utf-8"))
+        
+        # Strip any whitespace from the hash (in case of database encoding issues)
+        hashed_password_clean = hashed_password.strip()
+        
+        # Validate hash format (bcrypt hashes start with $2a$, $2b$, or $2y$)
+        if not hashed_password_clean.startswith(('$2a$', '$2b$', '$2y$')):
+            logger.error(f"Invalid bcrypt hash format: starts with {hashed_password_clean[:10]}")
+            return False
+        
+        # Ensure hash is exactly 60 characters (standard bcrypt hash length)
+        if len(hashed_password_clean) != 60:
+            logger.warning(f"Unexpected hash length: {len(hashed_password_clean)} (expected 60)")
+        
+        # Try to verify - bcrypt.checkpw needs bytes for both password and hash
+        hash_bytes = hashed_password_clean.encode("utf-8")
+        result = bcrypt.checkpw(password_bytes, hash_bytes)
+        
+        if not result:
+            logger.debug(f"Password verification failed: hash format looks correct (starts with {hashed_password_clean[:10]}, length: {len(hashed_password_clean)})")
+        return result
+    except ValueError as e:
+        logger.error(f"Password verification ValueError (likely invalid hash format): {e}")
+        return False
     except Exception as e:
-        logger.error(f"Password verification error: {e}")
+        logger.error(f"Password verification error: {e}", exc_info=True)
         return False
 
 # Check if this is a Celery worker (exit if so)
@@ -944,9 +981,16 @@ async def login(login_data: LoginRequest):
         # Find user by email or employee_id
         user = None
         if '@' in login_data.email:  # Check if it's an email
-            user = db_service.get_user_by_email(login_data.email)
+            # Make email lookup case-insensitive
+            email_lower = login_data.email.lower().strip()
+            user = db_service.get_user_by_email(email_lower)
+            if not user:
+                # Try with original case as fallback
+                user = db_service.get_user_by_email(login_data.email.strip())
+            logger.debug(f"Email login lookup for '{login_data.email}': found user_id={user.get('id') if user else None}, employee_id={user.get('employee_id') if user else None}")
         else:  # Assume it's an employee_id
-            user = db_service.get_user_by_employee_id(login_data.email)
+            user = db_service.get_user_by_employee_id(login_data.email.strip())
+            logger.debug(f"Employee ID login lookup for '{login_data.email}': found user_id={user.get('id') if user else None}")
         
         if not user:
             logger.warning(f"Login attempt with invalid email/employee_id: {login_data.email}")
@@ -963,12 +1007,15 @@ async def login(login_data: LoginRequest):
             logger.error(f"User {login_data.email} has invalid password hash type: {type(password_hash)}")
             raise HTTPException(status_code=401, detail="User account is not properly configured. Please contact administrator to reset your password.")
         
+        # Strip whitespace from password hash (in case of database encoding issues)
+        password_hash = password_hash.strip()
+        
         # Log hash info for debugging (first 20 chars only)
         logger.debug(f"Password hash length: {len(password_hash)}, starts with: {password_hash[:20]}")
         
         # Verify the provided password against the stored hash
-        if not verify_password(login_data.password, password_hash):
-            logger.warning(f"Invalid password attempt for user: {login_data.email} (hash length: {len(password_hash) if password_hash else 0})")
+        if not verify_password(login_data.password.strip(), password_hash):
+            logger.warning(f"Invalid password attempt for user: {login_data.email} (hash length: {len(password_hash) if password_hash else 0}, hash starts with: {password_hash[:10] if password_hash else 'N/A'})")
             raise HTTPException(status_code=401, detail="Invalid email/employee ID or password")
         
         # Check if user is active
@@ -2004,6 +2051,19 @@ async def create_task(task_data: dict):
             logger.error(f"Failed to notify creator: {creator_notification_error}")
             # Don't fail the operation if notification fails
 
+        # Get creator name for notifications
+        creator_name = "Unknown User"
+        if creator_id:
+            try:
+                creator_info = db_service.execute_query("""
+                    SELECT CONCAT(first_name, ' ', last_name) as name
+                    FROM users WHERE id = %s
+                """, (creator_id,))
+                if creator_info and len(creator_info) > 0:
+                    creator_name = creator_info[0]['name']
+            except Exception as e:
+                logger.warning(f"Could not get creator name: {e}")
+
         # Send notification to assignee (for regular tasks)
         if task_db_data.get('assignee_id') and not task_db_data.get('is_recurring'):
             try:
@@ -2023,7 +2083,7 @@ async def create_task(task_data: dict):
                     logger.warning(f"Could not get assignee name: {e}")
 
                 assignee_notification_title = f"New Task Assigned: {task_title}"
-                assignee_notification_message = f"You have been assigned a new task: {task_title}"
+                assignee_notification_message = f"{creator_name} has assigned you a new task: '{task_title}'"
                 if task_db_data.get('due_date'):
                     assignee_notification_message += f" (Due: {task_db_data['due_date']})"
 
@@ -2046,7 +2106,7 @@ async def create_task(task_data: dict):
                         """, (assignee_id,))
                         assignee_name = assignee_info[0]['name'] if assignee_info and len(assignee_info) > 0 else 'User'
 
-                        supervisor_message = f"New task '{task_title}' has been assigned to {assignee_name}"
+                        supervisor_message = f"{creator_name} has assigned new task '{task_title}' to {assignee_name}"
                         if task_db_data.get('due_date'):
                             supervisor_message += f" (Due: {task_db_data['due_date']})"
 
@@ -2121,8 +2181,21 @@ async def create_task(task_data: dict):
                     
                     assignee_display_name = assignee_name[0]['name'] if assignee_name and len(assignee_name) > 0 else 'User'
                     
+                    # Get creator name for notification
+                    child_creator_name = "Unknown User"
+                    if creator_id:
+                        try:
+                            creator_info = db_service.execute_query("""
+                                SELECT CONCAT(first_name, ' ', last_name) as name
+                                FROM users WHERE id = %s
+                            """, (creator_id,))
+                            if creator_info and len(creator_info) > 0:
+                                child_creator_name = creator_info[0]['name']
+                        except Exception as e:
+                            logger.warning(f"Could not get creator name for child task notification: {e}")
+                    
                     notification_title = f"New Task Assigned: {task_db_data['title']}"
-                    notification_message = f"You have been assigned a new task: {task_db_data['title']}"
+                    notification_message = f"{child_creator_name} has assigned you a new task: '{task_db_data['title']}'"
                     if first_child_data['due_date']:
                         notification_message += f" (Due: {first_child_data['due_date']})"
                     
@@ -2139,7 +2212,7 @@ async def create_task(task_data: dict):
                     supervisor_id = get_user_supervisor(str(first_child_data['assignee_id']))
                     if supervisor_id:
                         try:
-                            supervisor_message = f"New task '{task_db_data['title']}' has been assigned to {assignee_display_name}"
+                            supervisor_message = f"{child_creator_name} has assigned new task '{task_db_data['title']}' to {assignee_display_name}"
                             if first_child_data['due_date']:
                                 supervisor_message += f" (Due: {first_child_data['due_date']})"
                             
@@ -2171,8 +2244,21 @@ async def create_task(task_data: dict):
                     
                     assignee_display_name = assignee_name[0]['name'] if assignee_name and len(assignee_name) > 0 else 'User'
                     
+                    # Get creator name for notification
+                    creator_name_for_notif = "Unknown User"
+                    if creator_id:
+                        try:
+                            creator_info = db_service.execute_query("""
+                                SELECT CONCAT(first_name, ' ', last_name) as name
+                                FROM users WHERE id = %s
+                            """, (creator_id,))
+                            if creator_info and len(creator_info) > 0:
+                                creator_name_for_notif = creator_info[0]['name']
+                        except Exception as e:
+                            logger.warning(f"Could not get creator name for assignee notification: {e}")
+                    
                     notification_title = f"New Task Assigned: {task_db_data['title']}"
-                    notification_message = f"You have been assigned a new task: {task_db_data['title']}"
+                    notification_message = f"{creator_name_for_notif} has assigned you a new task: '{task_db_data['title']}'"
                     if task_db_data.get('due_date'):
                         notification_message += f" (Due: {task_db_data['due_date']})"
                     
@@ -2240,6 +2326,19 @@ async def create_task(task_data: dict):
                 assignee_name = 'Unassigned'
                 assignee_id = task_db_data.get('assignee_id')
                 
+                # Get creator name for admin notification
+                admin_creator_name = "Unknown User"
+                if creator_id:
+                    try:
+                        creator_info = db_service.execute_query("""
+                            SELECT CONCAT(first_name, ' ', last_name) as name
+                            FROM users WHERE id = %s
+                        """, (creator_id,))
+                        if creator_info and len(creator_info) > 0:
+                            admin_creator_name = creator_info[0]['name']
+                    except Exception as e:
+                        logger.warning(f"Could not get creator name for admin notification: {e}")
+                
                 if assignee_id:
                     assignee_info = db_service.execute_query("""
                         SELECT CONCAT(first_name, ' ', last_name) as name
@@ -2259,7 +2358,7 @@ async def create_task(task_data: dict):
                             db_service.create_notification(
                                 user_id=supervisor_id,
                                 title="New Task Assigned to Team Member",
-                                message=f"New task '{task_title}' has been assigned to {assignee_name}{due_date_str}.",
+                                message=f"{admin_creator_name} has assigned new task '{task_title}' to {assignee_name}{due_date_str}.",
                                 notification_type='info',
                                 task_id=str(task_id)
                             )
@@ -2272,8 +2371,9 @@ async def create_task(task_data: dict):
                 
                 notify_admins(
                     title="New Task Created",
-                    message=f"New task '{task_title}' has been created and assigned to '{assignee_name}'{due_date_str}.",
-                    notification_type='info'
+                    message=f"{admin_creator_name} has created new task '{task_title}' and assigned it to '{assignee_name}'{due_date_str}.",
+                    notification_type='info',
+                    task_id=str(task_id)
                 )
             except Exception as notification_error:
                 logger.error(f"Failed to send notification to admins for task creation: {notification_error}")
@@ -2914,9 +3014,13 @@ async def update_task_status(task_id: str, status_data: dict, token: str = Depen
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.patch("/api/v1/tasks/{task_id}/assignee")
-async def update_task_assignee(task_id: str, assignee_data: dict):
+async def update_task_assignee(task_id: str, assignee_data: dict, token: str = Depends(get_token_from_header)):
     """Quick assignee update endpoint"""
     try:
+        # Get current user from token
+        payload = verify_token(token)
+        current_user_id = payload.get("sub")
+        
         if 'assignee' not in assignee_data:
             raise HTTPException(status_code=400, detail="Assignee field is required")
         
@@ -2929,6 +3033,18 @@ async def update_task_assignee(task_id: str, assignee_data: dict):
         success = db_service.update_task(task_id, {'assignee_id': assignee_data['assignee']})
         if not success:
             raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Get assigner name for notifications
+        assigner_name = "Unknown User"
+        try:
+            assigner_info = db_service.execute_query("""
+                SELECT CONCAT(first_name, ' ', last_name) as name
+                FROM users WHERE id = %s
+            """, (current_user_id,))
+            if assigner_info and len(assigner_info) > 0:
+                assigner_name = assigner_info[0]['name']
+        except Exception as e:
+            logger.warning(f"Could not get assigner name: {e}")
         
         # Notify old and new assignees, plus admins
         try:
@@ -2949,7 +3065,7 @@ async def update_task_assignee(task_id: str, assignee_data: dict):
                     db_service.create_notification(
                         user_id=str(old_assignee_id),
                         title="Task Reassigned",
-                        message=f"Task '{task_title}' has been reassigned from you.",
+                        message=f"{assigner_name} has reassigned task '{task_title}' from you.",
                         notification_type='info',
                         task_id=task_id
                     )
@@ -2969,7 +3085,7 @@ async def update_task_assignee(task_id: str, assignee_data: dict):
                 db_service.create_notification(
                     user_id=str(assignee_data['assignee']),
                     title="Task Assigned",
-                    message=f"Task '{task_title}' has been assigned to you.",
+                    message=f"{assigner_name} has assigned task '{task_title}' to you.",
                     notification_type='info',
                     task_id=task_id
                 )
@@ -2981,7 +3097,7 @@ async def update_task_assignee(task_id: str, assignee_data: dict):
                         db_service.create_notification(
                             user_id=new_supervisor_id,
                             title="Task Assigned to Team Member",
-                            message=f"Task '{task_title}' has been assigned to {new_assignee_name}.",
+                            message=f"{assigner_name} has assigned task '{task_title}' to {new_assignee_name}.",
                             notification_type='info',
                             task_id=task_id
                         )
@@ -3008,8 +3124,9 @@ async def update_task_assignee(task_id: str, assignee_data: dict):
             
             notify_admins(
                 title="Task Reassigned",
-                message=f"Task '{task_title}' has been reassigned from '{old_assignee_display}' to '{new_assignee_display}'.",
-                notification_type='info'
+                message=f"{assigner_name} has reassigned task '{task_title}' from '{old_assignee_display}' to '{new_assignee_display}'.",
+                notification_type='info',
+                task_id=task_id
             )
         except Exception as notification_error:
             logger.error(f"Failed to send notifications for assignee change: {notification_error}")
@@ -3022,6 +3139,283 @@ async def update_task_assignee(task_id: str, assignee_data: dict):
         }
     except Exception as e:
         logger.error(f"Error updating task assignee: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.post("/api/v1/tasks/{task_id}/delegate")
+async def delegate_task(task_id: str, delegation_data: dict, token: str = Depends(get_token_from_header)):
+    """Delegate a task to another user or offline worker"""
+    try:
+        # Get current user from token
+        payload = verify_token(token)
+        current_user_id = payload.get("sub")
+        user_role = payload.get('role', '')
+        logger.info(f"Delegation request: user_id={current_user_id}, role={user_role}, task_id={task_id}")
+        
+        # Validate delegation data
+        delegated_to_user_id = delegation_data.get('delegated_to_user_id')
+        offline_assignee_name = delegation_data.get('offline_assignee_name')
+        offline_assignee_department = delegation_data.get('offline_assignee_department')
+        notes = delegation_data.get('notes')
+        
+        # Validate: either delegated_to_user_id OR (offline_assignee_name + offline_assignee_department) must be provided
+        if not delegated_to_user_id and (not offline_assignee_name or not offline_assignee_department):
+            raise HTTPException(
+                status_code=400, 
+                detail="Either delegated_to_user_id OR (offline_assignee_name + offline_assignee_department) must be provided"
+            )
+        
+        # Get task to verify it exists and check permissions
+        task = db_service.get_task_by_id(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Check if current user is the assignee or current delegated person
+        task_assignee_id = task.get('assignee_id')
+        current_delegated = db_service.get_current_delegated_assignee(task_id)
+        
+        can_delegate = False
+        if task_assignee_id and str(task_assignee_id) == str(current_user_id):
+            can_delegate = True
+        elif current_delegated and current_delegated.get('delegated_to_user_id') and str(current_delegated['delegated_to_user_id']) == str(current_user_id):
+            can_delegate = True
+        
+        # Also allow managers/admins to delegate
+        # Get user role from token first (faster), then fallback to database
+        user_role = payload.get('role', '')
+        user_role_lower = user_role.lower() if user_role else ''
+        logger.debug(f"Checking delegation permission: user_id={current_user_id}, role={user_role}, role_lower={user_role_lower}, task_assignee={task_assignee_id}")
+        
+        if user_role_lower in ['admin', 'manager', 'superadmin']:
+            can_delegate = True
+            logger.debug(f"User {current_user_id} has admin/manager role, allowing delegation")
+        else:
+            # Fallback to database lookup if role not in token
+            user_info = db_service.execute_query("""
+                SELECT role FROM users WHERE id = %s
+            """, (current_user_id,))
+            if user_info and len(user_info) > 0:
+                db_role = user_info[0].get('role', '').lower() if isinstance(user_info[0], dict) else ''
+                logger.debug(f"Database role lookup: {db_role}")
+                if db_role in ['admin', 'manager', 'superadmin']:
+                    can_delegate = True
+                    logger.debug(f"User {current_user_id} has admin/manager role from database, allowing delegation")
+        
+        logger.info(f"Delegation permission check: can_delegate={can_delegate}, user_id={current_user_id}, role={user_role}")
+        
+        if not can_delegate:
+            logger.warning(f"Delegation denied for user {current_user_id} (role: {user_role}) on task {task_id}. Task assignee: {task_assignee_id}, Current delegated: {current_delegated}")
+            raise HTTPException(
+                status_code=403, 
+                detail="You can only delegate tasks assigned to you or tasks you have been delegated"
+            )
+        
+        # Create delegation
+        delegation = db_service.create_task_delegation(
+            task_id=task_id,
+            delegated_by_user_id=str(current_user_id),
+            delegated_to_user_id=str(delegated_to_user_id) if delegated_to_user_id else None,
+            offline_assignee_name=offline_assignee_name,
+            offline_assignee_department=offline_assignee_department,
+            notes=notes
+        )
+        
+        if not delegation:
+            raise HTTPException(status_code=500, detail="Failed to create delegation")
+        
+        # Get task title for notifications
+        task_title = task.get('title', 'Unknown Task')
+        
+        # Notify all in delegation chain
+        try:
+            # Get full delegation chain
+            chain = db_service.get_task_delegation_chain(task_id)
+            logger.info(f"Creating notifications for delegation of task {task_id} (title: {task_title})")
+            
+            # Get delegator name for notifications
+            delegator_name = "Unknown User"
+            try:
+                delegator_info = db_service.execute_query("""
+                    SELECT CONCAT(first_name, ' ', last_name) as name
+                    FROM users WHERE id = %s
+                """, (current_user_id,))
+                if delegator_info and len(delegator_info) > 0:
+                    delegator_name = delegator_info[0]['name']
+            except Exception as e:
+                logger.warning(f"Could not get delegator name: {e}")
+            
+            # Get original assignee name for notifications
+            original_assignee_name = "Unknown User"
+            if task_assignee_id:
+                try:
+                    assignee_info = db_service.execute_query("""
+                        SELECT CONCAT(first_name, ' ', last_name) as name
+                        FROM users WHERE id = %s
+                    """, (task_assignee_id,))
+                    if assignee_info and len(assignee_info) > 0:
+                        original_assignee_name = assignee_info[0]['name']
+                except Exception as e:
+                    logger.warning(f"Could not get original assignee name: {e}")
+            
+            # Notify the person it's delegated TO (if system user)
+            delegated_to_name = None
+            if delegated_to_user_id:
+                try:
+                    delegated_to_info = db_service.execute_query("""
+                        SELECT CONCAT(first_name, ' ', last_name) as name
+                        FROM users WHERE id = %s
+                    """, (delegated_to_user_id,))
+                    if delegated_to_info and len(delegated_to_info) > 0:
+                        delegated_to_name = delegated_to_info[0]['name']
+                    
+                    notification_id = db_service.create_notification(
+                        user_id=str(delegated_to_user_id),
+                        title="Task Delegated to You",
+                        message=f"{delegator_name} has delegated task '{task_title}' to you.",
+                        notification_type='info',
+                        task_id=task_id
+                    )
+                    logger.info(f"✅ Created notification {notification_id} for delegated user {delegated_to_user_id}")
+                    
+                    # Notify delegated person's supervisor
+                    supervisor_id = get_user_supervisor(str(delegated_to_user_id))
+                    if supervisor_id:
+                        supervisor_notif_id = db_service.create_notification(
+                            user_id=supervisor_id,
+                            title="Task Delegated to Team Member",
+                            message=f"{delegator_name} has delegated task '{task_title}' to {delegated_to_name}.",
+                            notification_type='info',
+                            task_id=task_id
+                        )
+                        logger.info(f"✅ Created notification {supervisor_notif_id} for supervisor {supervisor_id}")
+                except Exception as e:
+                    logger.error(f"❌ Failed to notify delegated person: {e}", exc_info=True)
+            elif offline_assignee_name:
+                # For offline workers, notify the delegator and original assignee
+                logger.info(f"Delegating to offline worker: {offline_assignee_name} ({offline_assignee_department})")
+            
+            # Notify the person who delegated it
+            try:
+                if delegated_to_user_id and delegated_to_name:
+                    delegator_message = f"You have delegated task '{task_title}' to {delegated_to_name}."
+                elif offline_assignee_name:
+                    delegator_message = f"You have delegated task '{task_title}' to {offline_assignee_name} ({offline_assignee_department}) - offline worker."
+                else:
+                    delegator_message = f"You have delegated task '{task_title}'."
+                
+                delegator_notif_id = db_service.create_notification(
+                    user_id=str(current_user_id),
+                    title="Task Delegated",
+                    message=delegator_message,
+                    notification_type='info',
+                    task_id=task_id
+                )
+                logger.info(f"✅ Created notification {delegator_notif_id} for delegator {current_user_id}")
+            except Exception as e:
+                logger.error(f"❌ Failed to notify delegator: {e}", exc_info=True)
+            
+            # Notify original assignee
+            if task_assignee_id and str(task_assignee_id) != str(current_user_id):
+                try:
+                    if delegated_to_user_id and delegated_to_name:
+                        assignee_message = f"Task '{task_title}' that was assigned to you has been delegated by {delegator_name} to {delegated_to_name}."
+                    elif offline_assignee_name:
+                        assignee_message = f"Task '{task_title}' that was assigned to you has been delegated by {delegator_name} to {offline_assignee_name} ({offline_assignee_department}) - offline worker."
+                    else:
+                        assignee_message = f"Task '{task_title}' that was assigned to you has been delegated by {delegator_name}."
+                    
+                    assignee_notif_id = db_service.create_notification(
+                        user_id=str(task_assignee_id),
+                        title="Task Delegated",
+                        message=assignee_message,
+                        notification_type='info',
+                        task_id=task_id
+                    )
+                    logger.info(f"✅ Created notification {assignee_notif_id} for original assignee {task_assignee_id}")
+                except Exception as e:
+                    logger.error(f"❌ Failed to notify original assignee: {e}", exc_info=True)
+            
+            # Notify all previous delegations in the chain (except current one)
+            for prev_delegation in chain:
+                if prev_delegation.get('is_active') and prev_delegation.get('id') != delegation.get('id'):
+                    prev_user_id = prev_delegation.get('delegated_to_user_id')
+                    if prev_user_id and str(prev_user_id) != str(current_user_id) and str(prev_user_id) != str(delegated_to_user_id):
+                        try:
+                            if delegated_to_user_id and delegated_to_name:
+                                prev_message = f"Task '{task_title}' that was delegated to you has been re-delegated by {delegator_name} to {delegated_to_name}."
+                            elif offline_assignee_name:
+                                prev_message = f"Task '{task_title}' that was delegated to you has been re-delegated by {delegator_name} to {offline_assignee_name} ({offline_assignee_department}) - offline worker."
+                            else:
+                                prev_message = f"Task '{task_title}' that was delegated to you has been re-delegated by {delegator_name}."
+                            
+                            prev_notif_id = db_service.create_notification(
+                                user_id=str(prev_user_id),
+                                title="Task Re-delegated",
+                                message=prev_message,
+                                notification_type='info',
+                                task_id=task_id
+                            )
+                            logger.info(f"✅ Created notification {prev_notif_id} for previous delegate {prev_user_id}")
+                        except Exception as e:
+                            logger.error(f"❌ Failed to notify previous delegation: {e}", exc_info=True)
+            
+            # Notify admins
+            try:
+                if delegated_to_user_id and delegated_to_name:
+                    admin_message = f"{delegator_name} has delegated task '{task_title}' to {delegated_to_name}."
+                elif offline_assignee_name:
+                    admin_message = f"{delegator_name} has delegated task '{task_title}' to {offline_assignee_name} ({offline_assignee_department}) - offline worker."
+                else:
+                    admin_message = f"{delegator_name} has delegated task '{task_title}'."
+                
+                notify_admins(
+                    title="Task Delegated",
+                    message=admin_message,
+                    notification_type='info',
+                    task_id=task_id
+                )
+                logger.info(f"✅ Notified admins about delegation")
+            except Exception as e:
+                logger.error(f"❌ Failed to notify admins: {e}", exc_info=True)
+        except Exception as notification_error:
+            logger.error(f"❌ Failed to send delegation notifications: {notification_error}", exc_info=True)
+        
+        return {
+            "message": "Task delegated successfully",
+            "task_id": task_id,
+            "delegation": delegation,
+            "timestamp": datetime.now().isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error delegating task: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.get("/api/v1/tasks/{task_id}/delegations")
+async def get_task_delegations(task_id: str, token: str = Depends(get_token_from_header)):
+    """Get full delegation chain for a task"""
+    try:
+        # Verify token (but don't require specific permissions - any authenticated user can view)
+        payload = verify_token(token)
+        logger.debug(f"Fetching delegations for task {task_id} by user {payload.get('sub')}")
+        
+        # Get task to verify it exists
+        task = db_service.get_task_by_id(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        # Get delegation chain
+        chain = db_service.get_task_delegation_chain(task_id)
+        
+        return {
+            "task_id": task_id,
+            "delegations": chain
+        }
+    except HTTPException as e:
+        logger.warning(f"HTTPException in get_task_delegations: {e.status_code} - {e.detail}")
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching task delegations: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.patch("/api/v1/tasks/{task_id}/priority")

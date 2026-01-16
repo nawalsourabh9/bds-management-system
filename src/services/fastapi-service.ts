@@ -167,10 +167,12 @@ export const fastapiService = {
 
   // Quick Updates
   async updateTaskStatus(taskId: string, status: string) {
+    const token = localStorage.getItem('token');
     const response = await fetch(`${API_BASE}/api/v1/tasks/${taskId}/status`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify({ status }),
     });
@@ -183,10 +185,12 @@ export const fastapiService = {
   },
 
   async updateTaskAssignee(taskId: string, assignee: string) {
+    const token = localStorage.getItem('token');
     const response = await fetch(`${API_BASE}/api/v1/tasks/${taskId}/assignee`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify({ assignee }),
     });
@@ -198,11 +202,54 @@ export const fastapiService = {
     return response.json();
   },
 
+  async delegateTask(taskId: string, delegationData: {
+    delegated_to_user_id?: string | null;
+    offline_assignee_name?: string | null;
+    offline_assignee_department?: string | null;
+    notes?: string | null;
+  }) {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE}/api/v1/tasks/${taskId}/delegate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(delegationData),
+    });
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: response.statusText }));
+      throw new Error(error.detail || `Failed to delegate task: ${response.statusText}`);
+    }
+    
+    return response.json();
+  },
+
+  async getTaskDelegations(taskId: string) {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE}/api/v1/tasks/${taskId}/delegations`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get task delegations: ${response.statusText}`);
+    }
+    
+    return response.json();
+  },
+
   async updateTaskPriority(taskId: string, priority: string) {
+    const token = localStorage.getItem('token');
     const response = await fetch(`${API_BASE}/api/v1/tasks/${taskId}/priority`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify({ priority }),
     });
@@ -215,10 +262,12 @@ export const fastapiService = {
   },
 
   async updateTaskDueDate(taskId: string, dueDate: string) {
+    const token = localStorage.getItem('token');
     const response = await fetch(`${API_BASE}/api/v1/tasks/${taskId}/due-date`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify({ dueDate }),
     });
@@ -790,10 +839,12 @@ export const fastapiService = {
     // Remove undefined keys
     Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
 
+    const token = localStorage.getItem('token');
     const response = await fetch(`${API_BASE}/api/v1/tasks/${taskId}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify(payload),
     });
