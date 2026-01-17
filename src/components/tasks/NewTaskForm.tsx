@@ -347,7 +347,14 @@ const NewTaskForm: React.FC<NewTaskFormProps> = ({ taskType, onSubmit, onCancel 
                       mode="single"
                       selected={formData.dueDate}
                       onSelect={(date) => handleInputChange('dueDate', date)}
-                      disabled={(date) => date < new Date()}
+                      disabled={(date) => {
+                        // Compare only the date part (set both to midnight)
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        const compareDate = new Date(date);
+                        compareDate.setHours(0, 0, 0, 0);
+                        return compareDate < today;
+                      }}
                       initialFocus
                     />
                   </PopoverContent>
@@ -585,7 +592,14 @@ const NewTaskForm: React.FC<NewTaskFormProps> = ({ taskType, onSubmit, onCancel 
                     mode="single"
                     selected={formData.dueDate}
                     onSelect={(date) => handleInputChange('dueDate', date)}
-                    disabled={(date) => date < new Date()}
+                    disabled={(date) => {
+                      // Compare only the date part (set both to midnight)
+                      const today = new Date();
+                      today.setHours(0, 0, 0, 0);
+                      const compareDate = new Date(date);
+                      compareDate.setHours(0, 0, 0, 0);
+                      return compareDate < today;
+                    }}
                     initialFocus
                   />
                 </PopoverContent>

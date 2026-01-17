@@ -21,9 +21,10 @@ export const formatDateForInput = (dateValue: string | Date | null | undefined):
       if (dateValue.includes('T')) {
         date = parseISO(dateValue);
       } 
-      // Handle yyyy-MM-dd format
+      // Handle yyyy-MM-dd format - parse as local date to avoid timezone issues
       else if (dateValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
-        date = parse(dateValue, "yyyy-MM-dd", new Date());
+        const [year, month, day] = dateValue.split('-').map(Number);
+        date = new Date(year, month - 1, day); // month is 0-indexed, creates local date
       }
       // Handle other date string formats
       else {
@@ -38,7 +39,11 @@ export const formatDateForInput = (dateValue: string | Date | null | undefined):
       return null;
     }
 
-    const formattedDate = format(date, "yyyy-MM-dd");
+    // Format using local date components to ensure we get the correct date
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const formattedDate = `${year}-${month}-${day}`;
     console.log("formatDateForInput:", { input: dateValue, output: formattedDate });
     return formattedDate;
   } catch (error) {
@@ -49,18 +54,22 @@ export const formatDateForInput = (dateValue: string | Date | null | undefined):
 
 /**
  * Safely converts yyyy-MM-dd string to Date object
+ * Treats date-only strings as local dates to avoid timezone issues
  */
 export const parseInputDate = (dateStr: string): Date | undefined => {
   if (!dateStr) return undefined;
   
   try {
-    // If it's already in yyyy-MM-dd format
+    // If it's already in yyyy-MM-dd format (date only, no time)
     if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      const parsedDate = parse(dateStr, "yyyy-MM-dd", new Date());
+      // Parse as local date to avoid UTC conversion issues
+      // Split the date string and create a local date object
+      const [year, month, day] = dateStr.split('-').map(Number);
+      const parsedDate = new Date(year, month - 1, day); // month is 0-indexed
       return isValid(parsedDate) ? parsedDate : undefined;
     }
     
-    // If it's an ISO string
+    // If it's an ISO string with time component
     if (dateStr.includes('T')) {
       const parsedDate = parseISO(dateStr);
       return isValid(parsedDate) ? parsedDate : undefined;
