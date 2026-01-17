@@ -8,7 +8,9 @@ CREATE TABLE IF NOT EXISTS task_delegations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
     delegated_by_user_id UUID NOT NULL REFERENCES users(id),
+    delegated_by_name VARCHAR(255), -- name of delegator at delegation time (for historical accuracy)
     delegated_to_user_id UUID REFERENCES users(id), -- nullable if delegating to offline worker
+    delegated_to_name VARCHAR(255), -- name of delegatee at delegation time (for system users, for historical accuracy)
     offline_assignee_name VARCHAR(255), -- name if delegating to offline/shop floor worker
     offline_assignee_department VARCHAR(255), -- department/role if offline worker
     delegation_level INTEGER NOT NULL DEFAULT 1, -- position in chain, 1 = first delegation, 2 = second, etc.
@@ -46,19 +48,25 @@ BEGIN
     RETURN QUERY
     SELECT 
         td.delegated_to_user_id,
-        CASE 
-            WHEN td.delegated_to_user_id IS NOT NULL 
-            THEN CONCAT(u.first_name, ' ', u.last_name)
-            ELSE NULL
-        END as delegated_to_name,
+        COALESCE(
+            td.delegated_to_name,
+            CASE 
+                WHEN td.delegated_to_user_id IS NOT NULL 
+                THEN CONCAT(u.first_name, ' ', u.last_name)
+                ELSE NULL
+            END
+        ) as delegated_to_name,
         td.offline_assignee_name,
         td.offline_assignee_department,
         td.delegation_level,
-        CASE 
-            WHEN db.first_name IS NOT NULL AND db.last_name IS NOT NULL
-            THEN CONCAT(db.first_name, ' ', db.last_name)
-            ELSE NULL
-        END as delegated_by_name,
+        COALESCE(
+            td.delegated_by_name,
+            CASE 
+                WHEN db.first_name IS NOT NULL AND db.last_name IS NOT NULL
+                THEN CONCAT(db.first_name, ' ', db.last_name)
+                ELSE NULL
+            END
+        ) as delegated_by_name,
         td.created_at
     FROM task_delegations td
     LEFT JOIN users u ON td.delegated_to_user_id = u.id
@@ -90,17 +98,23 @@ BEGIN
     SELECT 
         td.id,
         td.delegated_by_user_id,
-        CASE 
-            WHEN db.first_name IS NOT NULL AND db.last_name IS NOT NULL
-            THEN CONCAT(db.first_name, ' ', db.last_name)
-            ELSE NULL
-        END as delegated_by_name,
+        COALESCE(
+            td.delegated_by_name,
+            CASE 
+                WHEN db.first_name IS NOT NULL AND db.last_name IS NOT NULL
+                THEN CONCAT(db.first_name, ' ', db.last_name)
+                ELSE NULL
+            END
+        ) as delegated_by_name,
         td.delegated_to_user_id,
-        CASE 
-            WHEN td.delegated_to_user_id IS NOT NULL 
-            THEN CONCAT(u.first_name, ' ', u.last_name)
-            ELSE NULL
-        END as delegated_to_name,
+        COALESCE(
+            td.delegated_to_name,
+            CASE 
+                WHEN td.delegated_to_user_id IS NOT NULL 
+                THEN CONCAT(u.first_name, ' ', u.last_name)
+                ELSE NULL
+            END
+        ) as delegated_to_name,
         td.offline_assignee_name,
         td.offline_assignee_department,
         td.delegation_level,

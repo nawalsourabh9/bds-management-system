@@ -1,45 +1,34 @@
--- Migration: Add Task Delegations System
--- This migration adds support for multi-level task delegation
--- Allows delegation to system users or offline/shop floor workers
+-- Migration: Add name columns to task_delegations table
+-- This stores names at delegation time for historical accuracy
+-- Even if a user's name changes later, the delegation record shows the name at delegation time
 
--- Create task_delegations table
--- Using gen_random_uuid() which is available in PostgreSQL 13+ without extensions
-CREATE TABLE IF NOT EXISTS task_delegations (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-    delegated_by_user_id UUID NOT NULL REFERENCES users(id),
-    delegated_to_user_id UUID REFERENCES users(id), -- nullable if delegating to offline worker
-    offline_assignee_name VARCHAR(255), -- name if delegating to offline/shop floor worker
-    offline_assignee_department VARCHAR(255), -- department/role if offline worker
-    delegation_level INTEGER NOT NULL DEFAULT 1, -- position in chain, 1 = first delegation, 2 = second, etc.
-    notes TEXT, -- optional notes about delegation
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    is_active BOOLEAN DEFAULT TRUE -- true for current delegation, false for historical
-);
+-- Add columns to store names (nullable, will be populated for existing records via JOIN)
+ALTER TABLE task_delegations 
+ADD COLUMN IF NOT EXISTS delegated_by_name VARCHAR(255),
+ADD COLUMN IF NOT EXISTS delegated_to_name VARCHAR(255);
 
--- Create indexes for performance
-CREATE INDEX IF NOT EXISTS idx_task_delegations_task_id ON task_delegations(task_id);
-CREATE INDEX IF NOT EXISTS idx_task_delegations_delegated_by ON task_delegations(delegated_by_user_id);
-CREATE INDEX IF NOT EXISTS idx_task_delegations_delegated_to ON task_delegations(delegated_to_user_id);
-CREATE INDEX IF NOT EXISTS idx_task_delegations_active ON task_delegations(is_active);
-CREATE INDEX IF NOT EXISTS idx_task_delegations_level ON task_delegations(delegation_level);
+-- Update existing records to populate names from users table
+UPDATE task_delegations
+SET 
+    delegated_by_name = subquery.delegated_by_name,
+    delegated_to_name = subquery.delegated_to_name
+FROM (
+    SELECT 
+        td.id,
+        CONCAT(db.first_name, ' ', db.last_name) as delegated_by_name,
+        CASE 
+            WHEN td.delegated_to_user_id IS NOT NULL 
+            THEN CONCAT(u.first_name, ' ', u.last_name)
+            ELSE NULL
+        END as delegated_to_name
+    FROM task_delegations td
+    INNER JOIN users db ON td.delegated_by_user_id = db.id
+    LEFT JOIN users u ON td.delegated_to_user_id = u.id
+    WHERE td.delegated_by_name IS NULL OR td.delegated_to_name IS NULL
+) AS subquery
+WHERE task_delegations.id = subquery.id;
 
--- Add constraint: either delegated_to_user_id OR (offline_assignee_name + offline_assignee_department) must be provided
-DO $$ 
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.table_constraints 
-        WHERE constraint_name = 'check_delegation_target'
-    ) THEN
-        ALTER TABLE task_delegations 
-        ADD CONSTRAINT check_delegation_target CHECK (
-            (delegated_to_user_id IS NOT NULL AND offline_assignee_name IS NULL AND offline_assignee_department IS NULL) OR
-            (delegated_to_user_id IS NULL AND offline_assignee_name IS NOT NULL AND offline_assignee_department IS NOT NULL)
-        );
-    END IF;
-END $$;
-
--- Create function to get current delegated assignee for a task
+-- Update the functions to use stored names, falling back to JOIN if names are NULL
 CREATE OR REPLACE FUNCTION get_current_delegated_assignee(task_id_param UUID)
 RETURNS TABLE (
     delegated_to_user_id UUID,
@@ -84,7 +73,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Create function to get full delegation chain for a task
+-- Update the delegation chain function
 CREATE OR REPLACE FUNCTION get_task_delegation_chain(task_id_param UUID)
 RETURNS TABLE (
     id UUID,

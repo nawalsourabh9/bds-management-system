@@ -640,6 +640,28 @@ class DatabaseService:
                 result = cur.fetchone()
                 next_level = (result['max_level'] if result else 0) + 1
                 
+                # Get delegator's name
+                delegated_by_name = None
+                if delegated_by_user_id:
+                    cur.execute("""
+                        SELECT CONCAT(first_name, ' ', last_name) as name
+                        FROM users WHERE id = %s
+                    """, (delegated_by_user_id,))
+                    delegator_result = cur.fetchone()
+                    if delegator_result:
+                        delegated_by_name = delegator_result['name']
+                
+                # Get delegated-to user's name (if system user)
+                delegated_to_name = None
+                if delegated_to_user_id:
+                    cur.execute("""
+                        SELECT CONCAT(first_name, ' ', last_name) as name
+                        FROM users WHERE id = %s
+                    """, (delegated_to_user_id,))
+                    delegatee_result = cur.fetchone()
+                    if delegatee_result:
+                        delegated_to_name = delegatee_result['name']
+                
                 # Mark all previous delegations as inactive
                 cur.execute("""
                     UPDATE task_delegations
@@ -647,15 +669,17 @@ class DatabaseService:
                     WHERE task_id = %s AND is_active = TRUE
                 """, (task_id,))
                 
-                # Create new delegation
+                # Create new delegation with names stored
                 cur.execute("""
                     INSERT INTO task_delegations 
-                    (task_id, delegated_by_user_id, delegated_to_user_id, 
+                    (task_id, delegated_by_user_id, delegated_by_name,
+                     delegated_to_user_id, delegated_to_name,
                      offline_assignee_name, offline_assignee_department, 
                      delegation_level, notes, is_active)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
                     RETURNING id, created_at
-                """, (task_id, delegated_by_user_id, delegated_to_user_id,
+                """, (task_id, delegated_by_user_id, delegated_by_name,
+                      delegated_to_user_id, delegated_to_name,
                       offline_assignee_name, offline_assignee_department,
                       next_level, notes))
                 
