@@ -49,7 +49,7 @@ BEGIN
     SELECT 
         td.delegated_to_user_id,
         COALESCE(
-            td.delegated_to_name,
+            td.delegated_to_name::TEXT,
             CASE 
                 WHEN td.delegated_to_user_id IS NOT NULL 
                 THEN CONCAT(u.first_name, ' ', u.last_name)
@@ -60,7 +60,7 @@ BEGIN
         td.offline_assignee_department,
         td.delegation_level,
         COALESCE(
-            td.delegated_by_name,
+            td.delegated_by_name::TEXT,
             CASE 
                 WHEN db.first_name IS NOT NULL AND db.last_name IS NOT NULL
                 THEN CONCAT(db.first_name, ' ', db.last_name)
@@ -99,7 +99,7 @@ BEGIN
         td.id,
         td.delegated_by_user_id,
         COALESCE(
-            td.delegated_by_name,
+            td.delegated_by_name::TEXT,
             CASE 
                 WHEN db.first_name IS NOT NULL AND db.last_name IS NOT NULL
                 THEN CONCAT(db.first_name, ' ', db.last_name)
@@ -108,7 +108,7 @@ BEGIN
         ) as delegated_by_name,
         td.delegated_to_user_id,
         COALESCE(
-            td.delegated_to_name,
+            td.delegated_to_name::TEXT,
             CASE 
                 WHEN td.delegated_to_user_id IS NOT NULL 
                 THEN CONCAT(u.first_name, ' ', u.last_name)

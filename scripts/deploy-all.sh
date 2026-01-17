@@ -588,8 +588,8 @@ build_image() {
     fi
     log_info "Target platform: $(get_target_platform)"
     
-    # Build command
-    local build_cmd="docker build --platform $(get_target_platform) -t $image_name:$version"
+    # Build command - use --no-cache to ensure latest code is included
+    local build_cmd="docker build --no-cache --platform $(get_target_platform) -t $image_name:$version"
     
     # Add build arguments for frontend
     if [ "$component" = "$FRONTEND_IMAGE" ]; then
@@ -849,6 +849,18 @@ deploy_to_aca() {
 
         log_success "Custom domain API URL stored in Key Vault for frontend use"
 
+        # Update container app with new image
+        log_info "Updating backend container app with new image: $ACR_NAME.azurecr.io/$component:$version"
+        if ! az containerapp update \
+            --name "$BACKEND_IMAGE" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "$ACR_NAME.azurecr.io/$component:$version" \
+            --revision-suffix "$revision_suffix"; then
+            log_error "Failed to update backend container app with new image"
+            return 1
+        fi
+        log_success "Backend container app updated with new image"
+
         log_success "Backend deployment completed successfully"
         return 0
         else
@@ -1106,6 +1118,16 @@ deploy_component() {
         fi
     else
         log_warning "Skipping push step"
+    fi
+    
+    # Verify endpoints are in the image (for backend only)
+    if [ "$component" = "$BACKEND_IMAGE" ]; then
+        log_info "Verifying delegation endpoints are in the built image..."
+        if docker run --rm "$image_name:$version" grep -q "@app.post.*delegate" /app/app/main.py 2>/dev/null; then
+            log_success "Delegation endpoints verified in Docker image"
+        else
+            log_warning "Could not verify endpoints in image (this is OK if grep is not available in image)"
+        fi
     fi
     
     # Deploy to Azure Container Apps
