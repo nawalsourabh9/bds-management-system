@@ -46,6 +46,8 @@ export const useTasks = () => {
             priority: item.priority as 'low' | 'medium' | 'high',
             dueDate: item.due_date || "",
             status: item.status as 'completed' | 'in-progress' | 'overdue' | 'not-started',
+            // Log date values for debugging
+            // due_date: item.due_date, start_date: item.start_date, end_date: item.end_date
             createdAt: item.created_at || "",
             isRecurring: item.is_recurring || false,
             isCustomerRelated: item.is_customer_related || false,
@@ -66,7 +68,18 @@ export const useTasks = () => {
             rejectedAt: item.rejected_at,
             rejectionReason: item.rejection_reason,
             departmentHeadId: item.department_head_id,
-            comments: item.comments
+            comments: item.comments,
+            // Delegation data
+            currentDelegatedTo: item.current_delegated_to_name ? {
+              delegatedToUserId: item.current_delegated_to_user_id,
+              delegatedToName: item.current_delegated_to_name,
+              offlineAssigneeName: item.current_delegated_to_department ? item.current_delegated_to_name : undefined,
+              offlineAssigneeDepartment: item.current_delegated_to_department,
+              delegationLevel: item.current_delegation_level
+            } : undefined,
+            // Created by information
+            createdBy: item.created_by,
+            createdByName: item.created_by_name || 'Unknown'
           };
 
           return cleanTask;

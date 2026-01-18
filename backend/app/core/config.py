@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     # Basic settings
     SECRET_KEY: str = "your-super-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours (was 30 minutes)
     DEBUG: bool = False
 
     # Environment settings

@@ -3,7 +3,7 @@ import { useState, useMemo } from "react";
 import { Task } from "@/types/task";
 import { isSameDay } from "date-fns";
 
-export const useTaskFilters = (tasks: Task[]) => {
+export const useTaskFilters = (tasks: Task[], currentUserId?: string | null) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [priorityFilter, setPriorityFilter] = useState<string | null>(null);
@@ -11,6 +11,7 @@ export const useTaskFilters = (tasks: Task[]) => {
   const [assigneeFilter, setAssigneeFilter] = useState<string | null>(null);
   const [dueDateFilter, setDueDateFilter] = useState<Date | null>(null);
   const [frequencyFilter, setFrequencyFilter] = useState<string | null>(null);
+  const [showOnlyMyTasks, setShowOnlyMyTasks] = useState<boolean>(true); // Default to true
 
   // Extract unique departments from tasks
   const departments = useMemo(() => {
@@ -104,6 +105,16 @@ export const useTaskFilters = (tasks: Task[]) => {
       const matchesDueDate = !dueDateFilter || 
         (task.dueDate && isSameDay(new Date(task.dueDate), dueDateFilter));
       
+      // My Tasks filter - show tasks related to current user (created, assigned, or delegated to)
+      let matchesMyTasks = true;
+      if (showOnlyMyTasks && currentUserId) {
+        const isCreatedByUser = task.createdBy === currentUserId;
+        const isAssignedToUser = task.assignee === currentUserId;
+        const isDelegatedToUser = task.currentDelegatedTo?.delegatedToUserId === currentUserId;
+        
+        matchesMyTasks = isCreatedByUser || isAssignedToUser || isDelegatedToUser;
+      }
+      
       // Enhanced Frequency filter - check both task's frequency and parent's frequency
       let matchesFrequency = true;
       if (frequencyFilter) {
@@ -128,7 +139,8 @@ export const useTaskFilters = (tasks: Task[]) => {
              matchesDepartment && 
              matchesAssignee && 
              matchesDueDate && 
-             matchesFrequency;
+             matchesFrequency &&
+             matchesMyTasks;
     });
   }, [tasks, searchTerm, statusFilter, priorityFilter, departmentFilter, assigneeFilter, dueDateFilter, frequencyFilter, parentTasksMap]);
 
@@ -147,6 +159,8 @@ export const useTaskFilters = (tasks: Task[]) => {
     setDueDateFilter,
     frequencyFilter,
     setFrequencyFilter,
+    showOnlyMyTasks,
+    setShowOnlyMyTasks,
     filteredTasks,
     departments,
     teamMembers

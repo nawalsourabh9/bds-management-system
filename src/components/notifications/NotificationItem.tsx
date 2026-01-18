@@ -1,6 +1,6 @@
 
 import React from "react";
-import { Notification } from "@/hooks/use-notifications";
+import { Notification } from "@/hooks/use-notifications.tsx";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { AlertCircle, CheckCircle2, Info, XCircle, ChevronRight } from "lucide-react";

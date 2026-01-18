@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import { toast } from 'sonner';
 import { API_BASE } from '@/config/api';
 import { useAuth } from '@/hooks/use-auth';
+import { useAuthSession } from '@/hooks/use-auth-session';
+import { playNotificationSound, showBrowserNotification, isBrowserNotificationsEnabled } from '@/utils/soundUtils';
 
 export interface Notification {
   id: string;
@@ -32,26 +34,21 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const { user, employee } = useAuth();
+  const { user: sessionUser } = useAuthSession(); // Get synchronous user data
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  
+  const previousUnreadCount = useRef<number>(0);
+
   // Prioritize UUID (id) over employee_id (display-only like "EMP002")
-  // employee.id is the UUID from the database, employee.employee_id is just for display
-  const userId = employee?.id || user?.id; // This should be the UUID, not employee_id
+  // Try multiple sources for user ID: employee (async), user (from auth context), sessionUser (sync)
+  const userId = employee?.id || user?.id || sessionUser?.id;
 
   useEffect(() => {
     if (userId) {
       fetchNotifications();
-      
-      // Auto-refresh notifications every 5 seconds for real-time updates
-      intervalRef.current = setInterval(() => {
-        fetchNotifications();
-      }, 5000);
-      
-      return () => {
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-        }
-      };
+
+      // Only fetch once on mount, don't auto-refresh to avoid overriding user actions
+      // Users can manually refresh if needed
+
     } else {
       // Clear notifications if user logs out
       setNotifications([]);
@@ -61,16 +58,18 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const fetchNotifications = async () => {
     if (!userId) {
-      console.warn("Cannot fetch notifications: user ID not available", { user, employee });
+      console.warn("Cannot fetch notifications: user ID not available");
       return;
     }
-    
+
     setIsLoading(true);
     try {
       // Fetch notifications for current user via FastAPI
-      console.log(`Fetching notifications for user_id: ${userId}`);
       const response = await fetch(`${API_BASE}/api/v1/notifications?user_id=${userId}`);
-      
+
+      // Handle token expiration
+      if (handleApiError(response)) return;
+
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`Failed to fetch notifications: ${response.status} - ${errorText}`);
@@ -78,8 +77,7 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       
       const data = await response.json();
-      console.log(`Notification API response:`, data);
-      
+
       // Convert notification IDs to strings and ensure proper format
       const formattedNotifications = (data.notifications || []).map((n: any) => ({
         ...n,
@@ -91,8 +89,34 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
       }));
       setNotifications(formattedNotifications);
       const unread = formattedNotifications.filter((n: Notification) => !n.is_read).length;
+
+      // Play notification sound and show browser notification for new unread notifications
+      if (unread > previousUnreadCount.current && previousUnreadCount.current > 0) {
+        playNotificationSound();
+
+        // Show browser notification and toast for the most recent unread notification
+        const newUnreadNotifications = formattedNotifications.filter((n: Notification) => !n.is_read);
+        if (newUnreadNotifications.length > 0) {
+          const latestNotification = newUnreadNotifications[0];
+
+          // Show browser notification if enabled
+          if (isBrowserNotificationsEnabled()) {
+            showBrowserNotification(latestNotification.title, {
+              body: latestNotification.message,
+              tag: latestNotification.id, // Prevents duplicate notifications
+            });
+          }
+
+          // Show toast notification (this will also play sound via our custom toast hook)
+          toast(latestNotification.title, {
+            description: latestNotification.message,
+            duration: 5000,
+          });
+        }
+      }
+
+      previousUnreadCount.current = unread;
       setUnreadCount(unread);
-      console.log(`✅ Fetched ${formattedNotifications.length} notifications, ${unread} unread for user ${userId}`);
     } catch (error) {
       console.error('❌ Error fetching notifications:', error);
       // Don't clear notifications on error, keep existing ones
@@ -101,12 +125,32 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
+  const handleApiError = (response: Response) => {
+    if (response.status === 401) {
+      // Token expired, redirect to login
+      console.warn('Token expired, redirecting to login');
+      localStorage.removeItem('token');
+      localStorage.removeItem('employee');
+      localStorage.removeItem('session');
+      window.location.href = '/login';
+      return true;
+    }
+    return false;
+  };
+
   const markAsRead = async (notificationId: string) => {
     try {
       const response = await fetch(`${API_BASE}/api/v1/notifications/${notificationId}/read`, {
         method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json',
+        },
       });
-      
+
+      // Handle token expiration
+      if (handleApiError(response)) return;
+
       if (!response.ok) {
         throw new Error('Failed to mark notification as read');
       }
@@ -122,12 +166,19 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const markAllAsRead = async () => {
     if (!userId) return;
-    
+
     try {
-      const response = await fetch(`${API_BASE}/api/v1/notifications/read-all?user_id=${userId}`, {
+      const response = await fetch(`${API_BASE}/api/v1/notifications/read-all`, {
         method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json',
+        },
       });
-      
+
+      // Handle token expiration
+      if (handleApiError(response)) return;
+
       if (!response.ok) {
         throw new Error('Failed to mark all notifications as read');
       }
@@ -143,8 +194,15 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       const response = await fetch(`${API_BASE}/api/v1/notifications/${notificationId}`, {
         method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json',
+        },
       });
-      
+
+      // Handle token expiration
+      if (handleApiError(response)) return;
+
       if (!response.ok) {
         throw new Error('Failed to delete notification');
       }
@@ -158,12 +216,19 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const clearAllNotifications = async () => {
     if (!userId) return;
-    
+
     try {
-      const response = await fetch(`${API_BASE}/api/v1/notifications/clear-all?user_id=${userId}`, {
+      const response = await fetch(`${API_BASE}/api/v1/notifications/clear-all`, {
         method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json',
+        },
       });
-      
+
+      // Handle token expiration
+      if (handleApiError(response)) return;
+
       if (!response.ok) {
         throw new Error('Failed to clear all notifications');
       }
@@ -175,11 +240,15 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
+  const refreshNotifications = async () => {
+    await fetchNotifications();
+  };
+
   const contextValue: NotificationsContextType = {
     notifications,
     unreadCount,
     isLoading,
-    fetchNotifications,
+    fetchNotifications: refreshNotifications,
     markAsRead,
     markAllAsRead,
     deleteNotification,

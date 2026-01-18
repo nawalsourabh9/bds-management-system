@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { fastapiService } from '@/services/fastapi-service';
-import { useNotifications } from '@/hooks/use-notifications';
+import { useNotifications } from '@/hooks/use-notifications.tsx';
 
 export interface TaskUpdateData {
   title?: string;

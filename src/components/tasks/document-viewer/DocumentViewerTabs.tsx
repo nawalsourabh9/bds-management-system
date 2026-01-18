@@ -14,6 +14,7 @@ interface DocumentViewerTabsProps {
   onUpdateRevision?: (revisionId: string) => void;
   revisions: DocumentRevision[];
   approvalStatus?: string;
+  isQMSManager?: boolean;
 }
 
 const DocumentViewerTabs: React.FC<DocumentViewerTabsProps> = ({
@@ -23,6 +24,7 @@ const DocumentViewerTabs: React.FC<DocumentViewerTabsProps> = ({
   onUpdateRevision,
   revisions,
   approvalStatus,
+  isQMSManager = false,
 }) => {
   return (
     <Tabs defaultValue="document" className="w-full">
@@ -45,6 +47,7 @@ const DocumentViewerTabs: React.FC<DocumentViewerTabsProps> = ({
           currentRevision={currentRevision} 
           revisions={revisions}
           onUpdateRevision={onUpdateRevision}
+          isQMSManager={isQMSManager}
         />
       </TabsContent>
     </Tabs>

@@ -7,6 +7,7 @@ import ApprovalCard from "./ApprovalCard";
 import DocumentViewerTabs from "./DocumentViewerTabs";
 import NewRevisionDialog from "./dialogs/NewRevisionDialog";
 import RejectDocumentDialog from "./dialogs/RejectDocumentDialog";
+import { useQMSManager } from "@/hooks/use-qms-manager";
 
 interface DocumentViewerProps {
   task: {
@@ -38,6 +39,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
   onUpdateApprovalStatus,
   teamMembers = []
 }) => {
+  const { isQMSManager } = useQMSManager();
   const [isNewRevisionDialogOpen, setIsNewRevisionDialogOpen] = useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
   
@@ -64,6 +66,9 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
   }
 
   const handleNewRevisionSubmit = (fileName: string, version: string, notes: string) => {
+    if (!isQMSManager) {
+      return;
+    }
     if (onAddNewRevision) {
       onAddNewRevision(document.documentType, fileName, version);
       setIsNewRevisionDialogOpen(false);
@@ -71,6 +76,9 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
   };
 
   const handleSetCurrentRevision = (revisionId: string) => {
+    if (!isQMSManager) {
+      return;
+    }
     if (onUpdateRevision) {
       onUpdateRevision(document.documentType, revisionId);
     }
@@ -109,10 +117,11 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
         documentTypeLabel={documentTypeLabel}
         approvalStatus={document.approvalHierarchy?.status}
         onNewRevision={
-          onAddNewRevision && document.approvalHierarchy?.status === 'approved' 
+          isQMSManager && onAddNewRevision && document.approvalHierarchy?.status === 'approved' 
             ? () => setIsNewRevisionDialogOpen(true) 
             : undefined
         }
+        isQMSManager={isQMSManager}
       />
 
       {document.approvalHierarchy && (
@@ -142,6 +151,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({
         onUpdateRevision={handleSetCurrentRevision}
         revisions={document.revisions || []}
         approvalStatus={document.approvalHierarchy?.status}
+        isQMSManager={isQMSManager}
       />
 
       <NewRevisionDialog 

@@ -16,6 +16,22 @@ const Tasks = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const taskIdFromUrl = searchParams.get('taskId');
   const filterFromUrl = searchParams.get('filter');
+
+  // Scroll to highlighted task when component mounts
+  useEffect(() => {
+    if (taskIdFromUrl) {
+      // Small delay to allow the table to render
+      setTimeout(() => {
+        const highlightedElement = document.getElementById(`task-${taskIdFromUrl}`);
+        if (highlightedElement) {
+          highlightedElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center'
+          });
+        }
+      }, 500);
+    }
+  }, [taskIdFromUrl, tasks]);
   
   // Only log in development environment
   if (process.env.NODE_ENV === 'development') {
@@ -46,10 +62,12 @@ const Tasks = () => {
     setDueDateFilter,
     frequencyFilter,
     setFrequencyFilter,
+    showOnlyMyTasks,
+    setShowOnlyMyTasks,
     filteredTasks,
     departments,
     teamMembers
-  } = useTaskFilters(tasks);
+  } = useTaskFilters(tasks, employee?.id);
 
   // Handle URL parameters for task highlighting and filtering
   useEffect(() => {
@@ -120,6 +138,8 @@ const Tasks = () => {
         setDueDateFilter={setDueDateFilter}
         frequencyFilter={frequencyFilter}
         setFrequencyFilter={setFrequencyFilter}
+        showOnlyMyTasks={showOnlyMyTasks}
+        setShowOnlyMyTasks={setShowOnlyMyTasks}
         departments={departments}
         teamMembers={teamMembers}
       />

@@ -15,6 +15,7 @@ interface DocumentHeaderProps {
   documentTypeLabel: string;
   approvalStatus?: string;
   onNewRevision?: () => void;
+  isQMSManager?: boolean;
 }
 
 const DocumentHeader: React.FC<DocumentHeaderProps> = ({
@@ -57,14 +58,26 @@ const DocumentHeader: React.FC<DocumentHeaderProps> = ({
           </Badge>
           {getApprovalStatusBadge()}
           {onNewRevision && approvalStatus === 'approved' && (
-            <Button 
-              size="sm" 
-              variant="outline" 
-              onClick={onNewRevision}
-              className="flex items-center gap-1"
-            >
-              <History className="h-4 w-4" /> New Revision
-            </Button>
+            isQMSManager ? (
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onClick={onNewRevision}
+                className="flex items-center gap-1"
+              >
+                <History className="h-4 w-4" /> New Revision
+              </Button>
+            ) : (
+              <Button 
+                size="sm" 
+                variant="outline" 
+                disabled
+                title="QMS Manager only"
+                className="flex items-center gap-1"
+              >
+                <History className="h-4 w-4" /> New Revision
+              </Button>
+            )
           )}
         </div>
       </div>

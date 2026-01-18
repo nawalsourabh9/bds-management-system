@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Plus, FileText, Database, PieChart, FileUp, History, CheckCircle, User, BookOpen } from "lucide-react";
+import { Search, Plus, FileText, Database, PieChart, FileUp, History, CheckCircle, User, BookOpen, Lock } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogDescription } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
@@ -20,6 +20,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { useSearchParams } from "react-router-dom";
 import DocumentUploadDialog from "@/components/documents/DocumentUploadDialog";
 import { useQuery } from "@tanstack/react-query";
+import { useQMSManager } from "@/hooks/use-qms-manager";
 
 const documentTypes: DocumentType[] = [
   {
@@ -60,6 +61,7 @@ const documentTypes: DocumentType[] = [
 ];
 
 const Documents = () => {
+  const { isQMSManager, loading: positionLoading } = useQMSManager();
   const [documents, setDocuments] = useState<TaskDocument[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
@@ -83,6 +85,14 @@ const Documents = () => {
   );
 
   const handleUploadDocument = (documentType: 'sop' | 'dataFormat' | 'reportFormat' | 'rulesAndProcedures', file: File, version: string, notes: string, approvalHierarchy: ApprovalHierarchy) => {
+    if (!isQMSManager) {
+      toast({
+        title: "Access Denied",
+        description: "Only QMS Manager can upload documents.",
+        variant: "destructive"
+      });
+      return;
+    }
     const newDocument: TaskDocument = {
       id: `doc-${Math.random().toString(36).substring(2, 11)}`,
       fileName: file.name,
@@ -231,9 +241,17 @@ const Documents = () => {
           <h1 className="text-2xl font-bold">Documents</h1>
           <p className="text-muted-foreground">Manage and track all your quality documents</p>
         </div>
-        <Button onClick={() => setIsUploadDialogOpen(true)}>
-          <FileUp className="mr-1 h-4 w-4" /> Upload Document
-        </Button>
+        {!positionLoading && (
+          isQMSManager ? (
+            <Button onClick={() => setIsUploadDialogOpen(true)}>
+              <FileUp className="mr-1 h-4 w-4" /> Upload Document
+            </Button>
+          ) : (
+            <Button disabled variant="outline">
+              <Lock className="mr-1 h-4 w-4" /> QMS Manager Only
+            </Button>
+          )
+        )}
       </div>
 
       <div className="relative">
@@ -282,16 +300,18 @@ const Documents = () => {
         ))}
       </div>
 
-      <DocumentUploadDialog
-        isOpen={isUploadDialogOpen}
-        onClose={() => setIsUploadDialogOpen(false)}
-        onUpload={handleUploadDocument}
-        documentType={selectedDocumentType}
-        currentUserId={currentUser?.id || 'user-1'}
-        currentUserPermissions={currentUserPermissions}
-        teamMembers={teamMembers}
-        documentTypes={documentTypes}
-      />
+      {isQMSManager && (
+        <DocumentUploadDialog
+          isOpen={isUploadDialogOpen}
+          onClose={() => setIsUploadDialogOpen(false)}
+          onUpload={handleUploadDocument}
+          documentType={selectedDocumentType}
+          currentUserId={currentUser?.id || 'user-1'}
+          currentUserPermissions={currentUserPermissions}
+          teamMembers={teamMembers}
+          documentTypes={documentTypes}
+        />
+      )}
     </div>
   );
 };
