@@ -75,8 +75,24 @@ export const RecurringTaskSection: React.FC<RecurringTaskSectionProps> = ({
   // Handle date selection from calendar
   const handleDateSelect = (setter: (value: string) => void) => (date: Date | undefined) => {
     if (date) {
-      const formattedDate = formatDateForInput(date);
-      console.log("RecurringTaskSection: Setting date:", formattedDate);
+      // Ensure we're working with local date components to avoid timezone shifts
+      // Extract local date components directly from the Date object
+      const year = date.getFullYear();
+      const month = date.getMonth();
+      const day = date.getDate();
+      
+      // Create a normalized date at local midnight
+      const normalizedDate = new Date(year, month, day);
+      
+      const formattedDate = formatDateForInput(normalizedDate);
+      console.log("RecurringTaskSection: Setting date:", {
+        originalDate: date,
+        year,
+        month,
+        day,
+        normalizedDate,
+        formattedDate
+      });
       setter(formattedDate);
     } else {
       setter("");

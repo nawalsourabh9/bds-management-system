@@ -42,7 +42,7 @@ const TasksTable: React.FC<TasksTableProps> = ({
   onDeleteTask,
   onUpdateTask,
   isAdmin = true, // Default to admin for all users
-  currentUserId = "1", 
+  currentUserId, 
   currentUserPermissions,
   teamMembers = [],
   highlightedTaskId

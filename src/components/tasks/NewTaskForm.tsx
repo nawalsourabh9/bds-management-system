@@ -16,6 +16,7 @@ import { format } from "date-fns";
 import { DocumentSelector } from "./form/DocumentSelector";
 import { fastapiService } from "@/services/fastapi-service";
 import { toast } from "@/hooks/use-toast";
+import { formatDateForInput } from "@/utils/dateUtils";
 
 interface Employee {
   id: string;
@@ -53,6 +54,7 @@ interface TaskFormData {
   frequency?: string;
   assignee: string;
   department: string;
+  departmentId: string; // Store department ID separately for backend
   subDepartment: string;
   position: string;
   reportsTo: string;
@@ -81,6 +83,7 @@ const NewTaskForm: React.FC<NewTaskFormProps> = ({ taskType, onSubmit, onCancel 
     title: '',
     assignee: '',
     department: '',
+    departmentId: '',
     subDepartment: '',
     position: '',
     reportsTo: '',
@@ -113,15 +116,24 @@ const NewTaskForm: React.FC<NewTaskFormProps> = ({ taskType, onSubmit, onCancel 
 
   const fetchEmployees = async () => {
     try {
+      setLoading(true);
       const response = await fastapiService.getUsers();
-      setEmployees(response.users || []);
+      console.log('Users API response:', response);
+      const users = response.users || response || [];
+      console.log('Setting employees:', users);
+      setEmployees(users);
+      if (users.length === 0) {
+        console.warn('No employees found in API response');
+      }
     } catch (error) {
       console.error('Error fetching employees:', error);
       toast({
         title: "Error",
-        description: "Failed to load employees",
+        description: "Failed to load employees. Please refresh the page.",
         variant: "destructive",
       });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -153,7 +165,8 @@ const NewTaskForm: React.FC<NewTaskFormProps> = ({ taskType, onSubmit, onCancel 
       setFormData(prev => ({
         ...prev,
         assignee: assigneeId,
-        department: selectedEmployee.department_id || '', // Use department_id instead of name
+        department: selectedEmployee.department_name || '', // Display department name
+        departmentId: selectedEmployee.department_id || '', // Store department ID for backend
         subDepartment: selectedEmployee.sub_department_name || '',
         position: selectedEmployee.position_name || '',
         reportsTo: selectedEmployee.reports_to_name || ''
@@ -163,6 +176,7 @@ const NewTaskForm: React.FC<NewTaskFormProps> = ({ taskType, onSubmit, onCancel 
         ...prev,
         assignee: assigneeId,
         department: '',
+        departmentId: '',
         subDepartment: '',
         position: '',
         reportsTo: ''
@@ -221,8 +235,8 @@ const NewTaskForm: React.FC<NewTaskFormProps> = ({ taskType, onSubmit, onCancel 
         status: 'not-started',
         is_recurring: taskType === 'recurring',
         recurring_frequency: taskType === 'recurring' ? formData.frequency : undefined,
-        start_date: taskType === 'recurring' ? formData.startDate?.toISOString().split('T')[0] : undefined,
-        end_date: taskType === 'recurring' ? formData.endDate?.toISOString().split('T')[0] : undefined,
+        start_date: taskType === 'recurring' && formData.startDate ? formatDateForInput(formData.startDate) : undefined,
+        end_date: taskType === 'recurring' && formData.endDate ? formatDateForInput(formData.endDate) : undefined,
         
         // Parent-level data (stored in parent task for inheritance)
         is_customer_related: taskType === 'recurring' ? formData.parentIsCustomerRelated : formData.childIsCustomerRelated,
@@ -233,11 +247,11 @@ const NewTaskForm: React.FC<NewTaskFormProps> = ({ taskType, onSubmit, onCancel 
       // Add assignee and due_date based on task type
       if (taskType === 'one-time') {
         taskPayload.assignee = formData.assignee;
-        taskPayload.due_date = formData.dueDate?.toISOString().split('T')[0];
+        taskPayload.due_date = formData.dueDate ? formatDateForInput(formData.dueDate) : undefined;
       } else if (taskType === 'recurring') {
         // For recurring tasks, send child instance data
         taskPayload.assignee = formData.assignee;
-        taskPayload.due_date = formData.dueDate?.toISOString().split('T')[0];
+        taskPayload.due_date = formData.dueDate ? formatDateForInput(formData.dueDate) : undefined;
         taskPayload.child_customer_name = formData.childCustomerName || null;
         taskPayload.child_customer_email = null;
         taskPayload.child_is_customer_related = formData.childIsCustomerRelated;
@@ -557,16 +571,22 @@ const NewTaskForm: React.FC<NewTaskFormProps> = ({ taskType, onSubmit, onCancel 
                 <SelectTrigger>
                   <SelectValue placeholder="Select assignee" />
                 </SelectTrigger>
-                <SelectContent>
-                  {employees.map(employee => (
-                    <SelectItem key={employee.id} value={employee.id}>
-                      <div className="flex items-center gap-2">
-                        <User className="h-4 w-4" />
-                        <span>{employee.first_name} {employee.last_name}</span>
-                        <span className="text-muted-foreground">({employee.employee_id || 'Not Set'})</span>
-                      </div>
-                    </SelectItem>
-                  ))}
+                <SelectContent className="max-h-[300px]">
+                  {loading ? (
+                    <SelectItem value="loading" disabled>Loading employees...</SelectItem>
+                  ) : employees.length === 0 ? (
+                    <SelectItem value="no-employees" disabled>No employees available</SelectItem>
+                  ) : (
+                    employees.map(employee => (
+                      <SelectItem key={employee.id} value={employee.id}>
+                        <div className="flex items-center gap-2">
+                          <User className="h-4 w-4" />
+                          <span>{employee.first_name} {employee.last_name}</span>
+                          <span className="text-muted-foreground">({employee.employee_id || 'Not Set'})</span>
+                        </div>
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>

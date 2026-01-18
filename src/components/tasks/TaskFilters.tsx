@@ -26,6 +26,8 @@ interface TaskFiltersProps {
   setDueDateFilter: (date: Date | null) => void;
   frequencyFilter: string | null;
   setFrequencyFilter: (frequency: string | null) => void;
+  showOnlyMyTasks: boolean;
+  setShowOnlyMyTasks: (show: boolean) => void;
   departments: string[];
   teamMembers: TeamMember[];
 }
@@ -45,6 +47,8 @@ const TaskFilters = ({
   setDueDateFilter,
   frequencyFilter,
   setFrequencyFilter,
+  showOnlyMyTasks,
+  setShowOnlyMyTasks,
   departments,
   teamMembers,
 }: TaskFiltersProps) => {
@@ -181,6 +185,20 @@ const TaskFilters = ({
           )}
         </PopoverContent>
       </Popover>
+
+      <div className="flex items-center space-x-2 px-3 py-2 border rounded-md">
+        <Checkbox
+          id="myTasks"
+          checked={showOnlyMyTasks}
+          onCheckedChange={(checked) => setShowOnlyMyTasks(checked === true)}
+        />
+        <label
+          htmlFor="myTasks"
+          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+        >
+          My Tasks Only
+        </label>
+      </div>
     </div>
   );
 };

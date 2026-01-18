@@ -62,10 +62,12 @@ const Tasks = () => {
     setDueDateFilter,
     frequencyFilter,
     setFrequencyFilter,
+    showOnlyMyTasks,
+    setShowOnlyMyTasks,
     filteredTasks,
     departments,
     teamMembers
-  } = useTaskFilters(tasks);
+  } = useTaskFilters(tasks, employee?.id);
 
   // Handle URL parameters for task highlighting and filtering
   useEffect(() => {
@@ -136,6 +138,8 @@ const Tasks = () => {
         setDueDateFilter={setDueDateFilter}
         frequencyFilter={frequencyFilter}
         setFrequencyFilter={setFrequencyFilter}
+        showOnlyMyTasks={showOnlyMyTasks}
+        setShowOnlyMyTasks={setShowOnlyMyTasks}
         departments={departments}
         teamMembers={teamMembers}
       />

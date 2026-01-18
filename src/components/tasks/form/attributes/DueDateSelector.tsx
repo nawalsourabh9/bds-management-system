@@ -28,8 +28,24 @@ export const DueDateSelector: React.FC<DueDateSelectorProps> = ({
   // Handle date selection from calendar
   const handleDateSelect = (date: Date | undefined) => {
     if (date) {
-      const formattedDate = formatDateForInput(date);
-      console.log("DueDateSelector: Selected date:", formattedDate);
+      // Ensure we're working with local date components to avoid timezone shifts
+      // Extract local date components directly from the Date object
+      const year = date.getFullYear();
+      const month = date.getMonth();
+      const day = date.getDate();
+      
+      // Create a normalized date at local midnight
+      const normalizedDate = new Date(year, month, day);
+      
+      const formattedDate = formatDateForInput(normalizedDate);
+      console.log("DueDateSelector: Selected date:", {
+        originalDate: date,
+        year,
+        month,
+        day,
+        normalizedDate,
+        formattedDate
+      });
       setDueDate(formattedDate);
     } else {
       setDueDate("");

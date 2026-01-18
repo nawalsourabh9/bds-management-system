@@ -46,6 +46,8 @@ export const useTasks = () => {
             priority: item.priority as 'low' | 'medium' | 'high',
             dueDate: item.due_date || "",
             status: item.status as 'completed' | 'in-progress' | 'overdue' | 'not-started',
+            // Log date values for debugging
+            // due_date: item.due_date, start_date: item.start_date, end_date: item.end_date
             createdAt: item.created_at || "",
             isRecurring: item.is_recurring || false,
             isCustomerRelated: item.is_customer_related || false,

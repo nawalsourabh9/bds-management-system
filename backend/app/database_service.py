@@ -392,8 +392,9 @@ class DatabaseService:
                         SELECT 
                             t.id, t.title, t.description, t.status, t.priority,
                             t.department_id, t.assignee_id, t.created_by,
-                            t.start_date,
+                            to_char(t.start_date, 'YYYY-MM-DD') as start_date,
                             to_char(t.due_date, 'YYYY-MM-DD') as due_date,
+                            to_char(t.end_date, 'YYYY-MM-DD') as end_date,
                             t.completed_date,
                             t.is_recurring, t.recurring_frequency, t.is_customer_related, t.customer_name,
                             t.customer_email, t.tags, t.created_at, t.updated_at, t.parent_task_id,
@@ -449,8 +450,9 @@ class DatabaseService:
                         SELECT 
                             t.id, t.title, t.description, t.status, t.priority,
                             t.department_id, t.assignee_id, t.created_by,
-                            t.start_date,
+                            to_char(t.start_date, 'YYYY-MM-DD') as start_date,
                             to_char(t.due_date, 'YYYY-MM-DD') as due_date,
+                            to_char(t.end_date, 'YYYY-MM-DD') as end_date,
                             t.completed_date,
                             t.is_recurring, t.recurring_frequency, t.is_customer_related, t.customer_name,
                             t.customer_email, t.tags, t.created_at, t.updated_at, t.parent_task_id,
@@ -520,7 +522,7 @@ class DatabaseService:
                         SELECT 
                             t.id, t.title, t.description, t.status, t.priority,
                             t.department_id, t.assignee_id, t.created_by,
-                            t.start_date, t.due_date, t.completed_date,
+                            to_char(t.start_date, 'YYYY-MM-DD') as start_date, to_char(t.due_date, 'YYYY-MM-DD') as due_date, to_char(t.end_date, 'YYYY-MM-DD') as end_date, t.completed_date,
                             t.is_recurring, t.recurring_frequency, t.is_customer_related, t.customer_name,
                             t.customer_email, t.tags, t.created_at, t.updated_at, t.parent_task_id,
                             t.attachments_required,
@@ -575,7 +577,7 @@ class DatabaseService:
                         SELECT 
                             t.id, t.title, t.description, t.status, t.priority,
                             t.department_id, t.assignee_id, t.created_by,
-                            t.start_date, t.due_date, t.completed_date,
+                            to_char(t.start_date, 'YYYY-MM-DD') as start_date, to_char(t.due_date, 'YYYY-MM-DD') as due_date, to_char(t.end_date, 'YYYY-MM-DD') as end_date, t.completed_date,
                             t.is_recurring, t.recurring_frequency, t.is_customer_related, t.customer_name,
                             t.customer_email, t.tags, t.created_at, t.updated_at, t.parent_task_id,
                             t.attachments_required,
