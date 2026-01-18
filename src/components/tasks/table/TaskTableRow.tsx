@@ -176,10 +176,38 @@ const TaskTableRow: React.FC<TaskTableRowProps> = ({
                       {task.assigneeDetails.initials}
                     </AvatarFallback>
                   </Avatar>
-                  <div className="flex flex-col">
+                  <div className="flex flex-col gap-1">
                     <span className="text-sm font-medium text-blue-700">{task.assigneeDetails.name}</span>
                     {task.assigneeDetails.employeeId && (
                       <span className="text-xs text-muted-foreground">{task.assigneeDetails.employeeId}</span>
+                    )}
+                    {task.currentDelegatedTo && (
+                      <div className="flex items-center gap-1 mt-1 pt-1 border-t border-border/50">
+                        <ArrowRight className="h-3 w-3 text-blue-600" />
+                        <span className="text-xs text-muted-foreground">Delegated to:</span>
+                        <span className="text-xs font-medium text-blue-600">
+                          {task.currentDelegatedTo.delegatedToName || task.currentDelegatedTo.offlineAssigneeName}
+                        </span>
+                        {task.currentDelegatedTo.offlineAssigneeName && (
+                          <Badge variant="outline" className="text-xs ml-1">
+                            Offline
+                          </Badge>
+                        )}
+                      </div>
+                    )}
+                    {/* Delegate Button - Show if user is assignee or current delegated person */}
+                    {(isAdmin || currentUserId === task.assignee || 
+                      (task.currentDelegatedTo?.delegatedToUserId && currentUserId === task.currentDelegatedTo.delegatedToUserId)) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 w-full mt-1 text-xs"
+                        onClick={() => setIsDelegationOpen(true)}
+                        title="Delegate Task"
+                      >
+                        <UserCheck className="h-3 w-3 mr-1" />
+                        Delegate
+                      </Button>
                     )}
                   </div>
                 </>
@@ -201,21 +229,38 @@ const TaskTableRow: React.FC<TaskTableRowProps> = ({
                       {task.assigneeDetails.initials}
                     </AvatarFallback>
                   </Avatar>
-                  <div className="flex flex-col">
+                  <div className="flex flex-col gap-1">
                     <span className="text-sm font-medium">{task.assigneeDetails.name}</span>
                     {task.assigneeDetails.employeeId && (
                       <span className="text-xs text-muted-foreground">{task.assigneeDetails.employeeId}</span>
                     )}
                     {task.currentDelegatedTo && (
-                      <div className="flex items-center gap-1 mt-1">
-                        <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                        <Badge variant="secondary" className="text-xs">
+                      <div className="flex items-center gap-1 mt-1 pt-1 border-t border-border/50">
+                        <ArrowRight className="h-3 w-3 text-blue-600" />
+                        <span className="text-xs text-muted-foreground">Delegated to:</span>
+                        <span className="text-xs font-medium text-blue-600">
                           {task.currentDelegatedTo.delegatedToName || task.currentDelegatedTo.offlineAssigneeName}
-                          {task.currentDelegatedTo.offlineAssigneeName && (
-                            <span className="ml-1 text-muted-foreground">(Offline)</span>
-                          )}
-                        </Badge>
+                        </span>
+                        {task.currentDelegatedTo.offlineAssigneeName && (
+                          <Badge variant="outline" className="text-xs ml-1">
+                            Offline
+                          </Badge>
+                        )}
                       </div>
+                    )}
+                    {/* Delegate Button - Show if user is assignee or current delegated person */}
+                    {(isAdmin || currentUserId === task.assignee || 
+                      (task.currentDelegatedTo?.delegatedToUserId && currentUserId === task.currentDelegatedTo.delegatedToUserId)) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 w-full mt-1 text-xs"
+                        onClick={() => setIsDelegationOpen(true)}
+                        title="Delegate Task"
+                      >
+                        <UserCheck className="h-3 w-3 mr-1" />
+                        Delegate
+                      </Button>
                     )}
                   </div>
                 </>
@@ -382,20 +427,6 @@ const TaskTableRow: React.FC<TaskTableRowProps> = ({
           >
             <Edit className="h-4 w-4 text-green-600" />
           </Button>
-          
-          {/* Delegate Button - Show if user is assignee or current delegated person */}
-          {(isAdmin || currentUserId === task.assignee || 
-            (task.currentDelegatedTo?.delegatedToUserId && currentUserId === task.currentDelegatedTo.delegatedToUserId)) && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0 hover:bg-primary/10"
-              onClick={() => setIsDelegationOpen(true)}
-              title="Delegate Task"
-            >
-              <UserCheck className="h-4 w-4 text-blue-600" />
-            </Button>
-          )}
           
           {/* Delete Button - Only show if admin or assignee */}
           {(isAdmin || currentUserId === task.assignee) && (
