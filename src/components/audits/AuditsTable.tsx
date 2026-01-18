@@ -12,6 +12,7 @@ interface AuditsTableProps {
   onUpdateAudit: (audit: Audit) => void;
   onDeleteAudit: (auditId: string) => void;
   setSelectedAudit: (audit: Audit | null) => void;
+  isQMSManager?: boolean;
 }
 
 const AuditsTable: React.FC<AuditsTableProps> = ({
@@ -19,7 +20,8 @@ const AuditsTable: React.FC<AuditsTableProps> = ({
   onViewAudit,
   onUpdateAudit,
   onDeleteAudit,
-  setSelectedAudit
+  setSelectedAudit,
+  isQMSManager = false
 }) => {
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -104,9 +106,15 @@ const AuditsTable: React.FC<AuditsTableProps> = ({
                         <Button size="sm" variant="outline" onClick={() => onViewAudit(audit)}>
                           View
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => setSelectedAudit(audit)}>
-                          Edit
-                        </Button>
+                        {isQMSManager ? (
+                          <Button size="sm" variant="outline" onClick={() => setSelectedAudit(audit)}>
+                            Edit
+                          </Button>
+                        ) : (
+                          <Button size="sm" variant="outline" disabled title="QMS Manager only">
+                            Edit
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>

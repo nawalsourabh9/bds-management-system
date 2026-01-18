@@ -2,13 +2,14 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Plus } from "lucide-react";
+import { Search, Plus, Lock } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { Audit } from "@/types/task";
 import AuditsTable from "@/components/audits/AuditsTable";
 import AuditForm from "@/components/audits/AuditForm";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useQMSManager } from "@/hooks/use-qms-manager";
 
 // Sample audit data
 const sampleAudits: Audit[] = [
@@ -49,6 +50,7 @@ const sampleAudits: Audit[] = [
 ];
 
 const Audits = () => {
+  const { isQMSManager, loading: positionLoading } = useQMSManager();
   const [audits, setAudits] = useState<Audit[]>(sampleAudits);
   const [searchTerm, setSearchTerm] = useState("");
   const [auditTypeFilter, setAuditTypeFilter] = useState<string | null>(null);
@@ -77,6 +79,14 @@ const Audits = () => {
   };
 
   const handleCreateAudit = (newAudit: Audit) => {
+    if (!isQMSManager) {
+      toast({
+        title: "Access Denied",
+        description: "Only QMS Manager can create audits.",
+        variant: "destructive"
+      });
+      return;
+    }
     setAudits([...audits, { ...newAudit, id: String(Date.now()) }]);
     setIsCreateDialogOpen(false);
     toast({
@@ -86,6 +96,14 @@ const Audits = () => {
   };
 
   const handleUpdateAudit = (updatedAudit: Audit) => {
+    if (!isQMSManager) {
+      toast({
+        title: "Access Denied",
+        description: "Only QMS Manager can edit audits.",
+        variant: "destructive"
+      });
+      return;
+    }
     const updatedAudits = audits.map(audit =>
       audit.id === updatedAudit.id ? updatedAudit : audit
     );
@@ -98,6 +116,14 @@ const Audits = () => {
   };
 
   const handleDeleteAudit = (auditId: string) => {
+    if (!isQMSManager) {
+      toast({
+        title: "Access Denied",
+        description: "Only QMS Manager can delete audits.",
+        variant: "destructive"
+      });
+      return;
+    }
     const remainingAudits = audits.filter(audit => audit.id !== auditId);
     setAudits(remainingAudits);
     toast({
@@ -113,9 +139,17 @@ const Audits = () => {
           <h1 className="text-2xl font-bold">Audits</h1>
           <p className="text-muted-foreground">Manage and track all your audits</p>
         </div>
-        <Button onClick={() => setIsCreateDialogOpen(true)}>
-          <Plus className="mr-1 h-4 w-4" /> New Audit
-        </Button>
+        {!positionLoading && (
+          isQMSManager ? (
+            <Button onClick={() => setIsCreateDialogOpen(true)}>
+              <Plus className="mr-1 h-4 w-4" /> New Audit
+            </Button>
+          ) : (
+            <Button disabled variant="outline">
+              <Lock className="mr-1 h-4 w-4" /> QMS Manager Only
+            </Button>
+          )
+        )}
       </div>
 
       <div className="flex items-center space-x-2">
@@ -162,6 +196,7 @@ const Audits = () => {
         onUpdateAudit={handleUpdateAudit}
         onDeleteAudit={handleDeleteAudit}
         setSelectedAudit={setSelectedAudit}
+        isQMSManager={isQMSManager}
       />
 
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>

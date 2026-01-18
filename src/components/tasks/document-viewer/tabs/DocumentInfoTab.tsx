@@ -9,12 +9,14 @@ interface DocumentInfoTabProps {
   currentRevision: DocumentRevision;
   revisions: DocumentRevision[];
   onUpdateRevision?: (revisionId: string) => void;
+  isQMSManager?: boolean;
 }
 
 const DocumentInfoTab: React.FC<DocumentInfoTabProps> = ({
   currentRevision,
   revisions,
-  onUpdateRevision
+  onUpdateRevision,
+  isQMSManager = false
 }) => {
   return (
     <div className="space-y-3">
@@ -69,6 +71,7 @@ const DocumentInfoTab: React.FC<DocumentInfoTabProps> = ({
         revisions={revisions} 
         currentRevisionId={currentRevision.id} 
         onUpdateRevision={onUpdateRevision}
+        isQMSManager={isQMSManager}
       />
     </div>
   );
@@ -78,7 +81,8 @@ const RevisionHistory: React.FC<{
   revisions: DocumentRevision[];
   currentRevisionId: string;
   onUpdateRevision?: (revisionId: string) => void;
-}> = ({ revisions, currentRevisionId, onUpdateRevision }) => {
+  isQMSManager?: boolean;
+}> = ({ revisions, currentRevisionId, onUpdateRevision, isQMSManager = false }) => {
   return (
     <div className="mt-4">
       <h3 className="text-sm font-medium mb-2">Revision History</h3>
@@ -100,14 +104,26 @@ const RevisionHistory: React.FC<{
                 <td className="p-2">{rev.uploadedBy}</td>
                 <td className="p-2">
                   {rev.id !== currentRevisionId && onUpdateRevision ? (
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="h-7 px-2"
-                      onClick={() => onUpdateRevision(rev.id)}
-                    >
-                      Set Current
-                    </Button>
+                    isQMSManager ? (
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-7 px-2"
+                        onClick={() => onUpdateRevision(rev.id)}
+                      >
+                        Set Current
+                      </Button>
+                    ) : (
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-7 px-2"
+                        disabled
+                        title="QMS Manager only"
+                      >
+                        Set Current
+                      </Button>
+                    )
                   ) : (
                     <span className="text-xs flex items-center gap-1 text-green-600">
                       <CheckCircle className="h-3 w-3" /> Current

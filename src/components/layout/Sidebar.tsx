@@ -22,6 +22,8 @@ import {
   Brain,
   Calendar as CalendarIcon,
   BarChart3,
+  ClipboardCheck,
+  FileText,
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/use-auth";
@@ -67,6 +69,18 @@ const allMenuItems = [
     title: "Dept. Summary",
     icon: BarChart3,
     path: "/department-summary",
+    adminOnly: false
+  },
+  {
+    title: "IATF Audit",
+    icon: ClipboardCheck,
+    path: "/audits",
+    adminOnly: false
+  },
+  {
+    title: "Documents",
+    icon: FileText,
+    path: "/documents",
     adminOnly: false
   }
 ];
