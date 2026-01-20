@@ -77,126 +77,13 @@ interface Activity {
 }
 
 export default function DepartmentSummary() {
-  const { user } = useAuth();
+  const { user, employee } = useAuth();
   const [summary, setSummary] = useState<DepartmentSummary | null>(null);
   const [positionInfo, setPositionInfo] = useState<PositionInfo | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasAccess, setHasAccess] = useState(false);
-
-  // Mock activities to show when there are no real activities
-  const getMockActivities = (): Activity[] => {
-    const now = new Date();
-    const friday = new Date(now);
-    friday.setDate(now.getDate() + ((5 - now.getDay() + 7) % 7 || 7)); // Next Friday
-    const nextWeek = new Date(now);
-    nextWeek.setDate(now.getDate() + 7);
-    
-    return [
-      {
-        id: 'mock-1',
-        type: 'notification',
-        title: 'Upcoming Audit',
-        message: `Your department has audits coming this Friday (${friday.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}) - Click to see details`,
-        notification_type: 'warning',
-        created_at: new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
-        user: {
-          id: 'system',
-          first_name: 'System',
-          last_name: 'Notification',
-          employee_id: 'SYS001',
-          department_name: 'System'
-        }
-      },
-      {
-        id: 'mock-2',
-        type: 'audit',
-        action: 'create',
-        table_name: 'tasks',
-        message: 'New task created: Complete Q4 Review Report (Due: Nov 28, 2025, Priority: High, Status: In Progress, Responsible: John Doe, Accountable: Jane Smith)',
-        created_at: new Date(now.getTime() - 5 * 60 * 60 * 1000).toISOString(), // 5 hours ago
-        user: {
-          id: 'user-1',
-          first_name: 'John',
-          last_name: 'Doe',
-          employee_id: 'EMP001',
-          department_name: summary?.departments[0]?.name || 'Human Resources'
-        },
-        task: {
-          id: 'task-1',
-          title: 'Complete Q4 Review Report',
-          status: 'in-progress',
-          priority: 'high',
-          due_date: new Date(2025, 10, 28).toISOString(),
-          assignee_name: 'John Doe',
-          accountable_name: 'Jane Smith'
-        }
-      },
-      {
-        id: 'mock-3',
-        type: 'audit',
-        action: 'create',
-        table_name: 'users',
-        message: 'Your department welcoming new user: Sarah Johnson (ID: EMP005, Position: HR Executive, Department: Human Resources)',
-        created_at: new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString(), // 1 day ago
-        user: {
-          id: 'user-2',
-          first_name: 'Admin',
-          last_name: 'User',
-          employee_id: 'ADM001',
-          department_name: 'Administration'
-        },
-        target_user: {
-          id: 'user-3',
-          first_name: 'Sarah',
-          last_name: 'Johnson',
-          employee_id: 'EMP005',
-          email: 'sarah.johnson@company.com',
-          position_name: 'HR Executive',
-          department_name: 'Human Resources'
-        }
-      },
-      {
-        id: 'mock-4',
-        type: 'audit',
-        action: 'create',
-        table_name: 'tasks',
-        message: 'New task created: Prepare Annual Budget (Due: Dec 15, 2025, Priority: Medium, Status: Not Started, Responsible: Mike Wilson, Accountable: Lisa Brown)',
-        created_at: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days ago
-        user: {
-          id: 'user-4',
-          first_name: 'Mike',
-          last_name: 'Wilson',
-          employee_id: 'EMP003',
-          department_name: summary?.departments[0]?.name || 'Finance'
-        },
-        task: {
-          id: 'task-2',
-          title: 'Prepare Annual Budget',
-          status: 'not-started',
-          priority: 'medium',
-          due_date: new Date(2025, 11, 15).toISOString(),
-          assignee_name: 'Mike Wilson',
-          accountable_name: 'Lisa Brown'
-        }
-      },
-      {
-        id: 'mock-5',
-        type: 'notification',
-        title: 'Department Meeting',
-        message: 'Monthly department meeting scheduled for next week - Click to see details',
-        notification_type: 'info',
-        created_at: new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 days ago
-        user: {
-          id: 'system',
-          first_name: 'System',
-          last_name: 'Notification',
-          employee_id: 'SYS001',
-          department_name: 'System'
-        }
-      }
-    ];
-  };
+  const [userInfo, setUserInfo] = useState<{firstName: string; lastName: string; departmentName: string} | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -221,6 +108,11 @@ export default function DepartmentSummary() {
       // Get user details including position
       const userResponse = await fastapiService.getUser(userId);
       const positionId = userResponse.position_id;
+      
+      // Store user info for welcome message
+      const firstName = userResponse.first_name || employee?.first_name || 'User';
+      const lastName = userResponse.last_name || employee?.last_name || '';
+      const userName = `${firstName} ${lastName}`.trim();
 
       if (!positionId) {
         setHasAccess(false);
@@ -247,6 +139,31 @@ export default function DepartmentSummary() {
         } catch (error: any) {
           console.warn("Failed to fetch position departments:", error);
           departments = [];
+        }
+      }
+      
+      // Always include user's own department if it exists and is not already in the list
+      if (userResponse.department_id) {
+        const userDeptId = userResponse.department_id;
+        const userDeptAlreadyIncluded = departments.some((d: any) => d.id === userDeptId);
+        
+        if (!userDeptAlreadyIncluded) {
+          try {
+            const departmentsResponse = await fastapiService.getDepartments();
+            const allDepartments = Array.isArray(departmentsResponse) ? departmentsResponse : departmentsResponse.departments || [];
+            const userDept = allDepartments.find((d: any) => d.id === userDeptId);
+            if (userDept) {
+              // Add user's department to the beginning of the list
+              departments = [{
+                id: userDept.id,
+                name: userDept.name,
+                parent_department_id: userDept.parent_department_id,
+                parent_department_name: userDept.parent_department_name
+              }, ...departments];
+            }
+          } catch (error) {
+            console.warn("Failed to fetch user's department:", error);
+          }
         }
       }
       
@@ -281,11 +198,64 @@ export default function DepartmentSummary() {
           level: positionLevel,
           departments: departments
         });
+        
+        // Set user info for welcome message - prioritize user's own department
+        let primaryDepartment = 'your department';
+        if (userResponse.department_name) {
+          primaryDepartment = userResponse.department_name;
+        } else if (userResponse.department_id) {
+          // Try to fetch department name if not in userResponse
+          try {
+            const departmentsResponse = await fastapiService.getDepartments();
+            const allDepartments = Array.isArray(departmentsResponse) ? departmentsResponse : departmentsResponse.departments || [];
+            const userDept = allDepartments.find((d: any) => d.id === userResponse.department_id);
+            if (userDept) {
+              primaryDepartment = userDept.name;
+            }
+          } catch (error) {
+            console.warn("Failed to fetch user's department name:", error);
+            // Fallback to first position department
+            if (departments.length > 0) {
+              primaryDepartment = departments[0].name;
+            }
+          }
+        } else if (departments.length > 0) {
+          // Fallback to first position department if user has no department
+          primaryDepartment = departments[0].name;
+        }
+        
+        setUserInfo({
+          firstName: firstName,
+          lastName: lastName,
+          departmentName: primaryDepartment
+        });
 
         // Get department summary
         let summaryFailed = false;
         try {
           const summaryResponse = await fastapiService.getUserDepartmentSummary(userId);
+          
+          // If summary has no departments but user has a department, ensure it's included
+          if (summaryResponse && (!summaryResponse.departments || summaryResponse.departments.length === 0)) {
+            if (userResponse.department_id) {
+              // Find user's department in the departments list we built
+              const userDept = departments.find((d: any) => d.id === userResponse.department_id);
+              if (userDept) {
+                summaryResponse.departments = [{
+                  id: userDept.id,
+                  name: userDept.name,
+                  parent_department_id: userDept.parent_department_id,
+                  parent_department_name: userDept.parent_department_name,
+                  tasks_count: 0,
+                  completed_tasks: 0,
+                  pending_tasks: 0,
+                  overdue_tasks: 0,
+                  users_count: 0
+                }];
+              }
+            }
+          }
+          
           setSummary(summaryResponse);
         } catch (error: any) {
           // Handle 404 - endpoint might not be deployed yet
@@ -301,27 +271,41 @@ export default function DepartmentSummary() {
           if (is404) {
             console.warn("Department summary endpoint not available (not deployed yet). Using fallback data.", error);
             summaryFailed = true;
-            // Set empty summary as fallback
+            // Set empty summary as fallback, but ensure user's department is included
+            const fallbackDepartments = departments.length > 0 
+              ? departments.map(d => ({
+                  id: d.id,
+                  name: d.name,
+                  parent_department_id: d.parent_department_id,
+                  parent_department_name: d.parent_department_name,
+                  tasks_count: 0,
+                  completed_tasks: 0,
+                  pending_tasks: 0,
+                  overdue_tasks: 0,
+                  users_count: 0
+                }))
+              : (userResponse.department_id && userResponse.department_name ? [{
+                  id: userResponse.department_id,
+                  name: userResponse.department_name,
+                  parent_department_id: null,
+                  parent_department_name: null,
+                  tasks_count: 0,
+                  completed_tasks: 0,
+                  pending_tasks: 0,
+                  overdue_tasks: 0,
+                  users_count: 0
+                }] : []);
+            
             setSummary({
               tasks_count: 0,
               completed_tasks: 0,
               pending_tasks: 0,
               overdue_tasks: 0,
               users_count: 0,
-              departments: departments.map(d => ({
-                id: d.id,
-                name: d.name,
-                parent_department_id: d.parent_department_id,
-                parent_department_name: d.parent_department_name,
-                tasks_count: 0,
-                completed_tasks: 0,
-                pending_tasks: 0,
-                overdue_tasks: 0,
-                users_count: 0
-              }))
+              departments: fallbackDepartments
             });
-            // When summary endpoint fails, show mock activities immediately
-            setActivities(getMockActivities());
+            // When summary endpoint fails, show empty activities
+            setActivities([]);
             // Don't re-throw 404 errors - they're handled gracefully
             // Continue execution - summaryFailed flag will prevent activities fetch
           } else {
@@ -332,28 +316,28 @@ export default function DepartmentSummary() {
         }
 
         // Get activities for all departments (only if summary didn't fail)
-        if (!summaryFailed) {
-          const departmentIds = departments.map(d => d.id);
+        if (!summaryFailed && summary) {
+          // Use department IDs from the summary response (includes sub-departments)
+          const departmentIds = summary.departments?.map(d => d.id) || departments.map(d => d.id);
           if (departmentIds.length > 0) {
             try {
               const activitiesResponse = await fastapiService.getDepartmentActivities(departmentIds, 100);
               const realActivities = activitiesResponse.activities || [];
               
-              // If no real activities, show mock activities
-              if (realActivities.length === 0) {
-                setActivities(getMockActivities());
-              } else {
-                setActivities(realActivities);
-              }
+              // Always use real activities, even if empty
+              setActivities(realActivities);
             } catch (error) {
               console.error("Error fetching activities:", error);
-              // On error, show mock activities
-              setActivities(getMockActivities());
+              // On error, show empty activities instead of mock
+              setActivities([]);
             }
           } else {
-            // No departments, show mock activities
-            setActivities(getMockActivities());
+            // No departments, show empty activities
+            setActivities([]);
           }
+        } else {
+          // Summary failed, show empty activities instead of mock
+          setActivities([]);
         }
       } else {
         setHasAccess(false);
@@ -458,10 +442,38 @@ export default function DepartmentSummary() {
 
   return (
     <div className="space-y-6">
+      {/* Welcome Banner */}
+      {userInfo && (
+        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-4">
+              <div className="flex-shrink-0">
+                <div className="h-16 w-16 rounded-full bg-blue-600 flex items-center justify-center">
+                  <Building2 className="h-8 w-8 text-white" />
+                </div>
+              </div>
+              <div className="flex-1">
+                <h1 className="text-2xl font-bold text-gray-900 mb-1">
+                  Welcome {userInfo.firstName} {userInfo.lastName}!
+                </h1>
+                <p className="text-lg text-gray-700">
+                  Here's what's happening in <span className="font-semibold text-blue-700">{userInfo.departmentName}</span>
+                </p>
+                {positionInfo && (
+                  <p className="text-sm text-gray-600 mt-1">
+                    {positionInfo.name} • {getLevelName(positionInfo.level)}
+                  </p>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      
       <div className="flex items-center gap-3">
         <Building2 className="h-8 w-8 text-blue-600" />
         <div>
-          <h1 className="text-2xl font-bold">Department Summary</h1>
+          <h2 className="text-2xl font-bold">Department Summary</h2>
           <p className="text-gray-600">
             Overview for {positionInfo?.name} position ({getLevelName(positionInfo?.level || 0)})
           </p>
@@ -529,7 +541,7 @@ export default function DepartmentSummary() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold mb-2">{summary?.users_count || 0}</div>
+            <div className="text-3xl font-bold mb-2">{summary?.users_count ?? 0}</div>
             <p className="text-sm text-muted-foreground">Total users across departments</p>
           </CardContent>
         </Card>
@@ -728,29 +740,10 @@ export default function DepartmentSummary() {
           ) : (
             <div className="space-y-4">
               {activities.map((activity) => {
-                const isMock = activity.id?.startsWith('mock-');
-                const isClickable = isMock && activity.message.includes('Click to see details');
                 return (
                 <div
                   key={activity.id}
-                  className={`flex items-start gap-4 p-4 border rounded-lg transition-colors ${
-                    isClickable 
-                      ? 'hover:bg-blue-50 cursor-pointer border-blue-200' 
-                      : 'hover:bg-gray-50'
-                  } ${isMock ? 'opacity-90' : ''}`}
-                  onClick={() => {
-                    if (isClickable) {
-                      // Handle click for mock activities
-                      if (activity.title === 'Upcoming Audit') {
-                        const now = new Date();
-                        const friday = new Date(now);
-                        friday.setDate(now.getDate() + ((5 - now.getDay() + 7) % 7 || 7)); // Next Friday
-                        alert(`Audit Details:\n\nDate: ${friday.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}\n\nThis is a sample notification. Real audit notifications will appear here when scheduled.`);
-                      } else if (activity.title === 'Department Meeting') {
-                        alert(`Meeting Details:\n\nDate: Next Week\n\nThis is a sample notification. Real meeting notifications will appear here when scheduled.`);
-                      }
-                    }
-                  }}
+                  className="flex items-start gap-4 p-4 border rounded-lg transition-colors hover:bg-gray-50"
                 >
                   <div className="flex-shrink-0 mt-1">
                     {activity.type === 'notification' ? (

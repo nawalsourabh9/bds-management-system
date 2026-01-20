@@ -1560,6 +1560,24 @@ async def get_departments(request: Request = None):
         safe_error = mask_sensitive_info(error_msg)
         raise HTTPException(status_code=500, detail=f"Internal server error: {safe_error}")
 
+@app.get("/api/v1/departments/activities")
+async def get_department_activities(department_ids: str = None, limit: int = 100):
+    """Get all activities (notifications and audit logs) for given departments"""
+    try:
+        if not department_ids:
+            return {"activities": []}
+        
+        # Parse comma-separated department IDs
+        dept_ids = [d.strip() for d in department_ids.split(',') if d.strip()]
+        if not dept_ids:
+            return {"activities": []}
+        
+        activities = db_service.get_department_activities(dept_ids, limit)
+        return {"activities": activities}
+    except Exception as e:
+        logger.error(f"Error fetching department activities: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 @app.get("/api/v1/departments/{department_id}")
 async def get_department(department_id: str):
     """Get a specific department by ID"""
@@ -1929,24 +1947,6 @@ async def get_department_hierarchy(department_id: str):
         return {"hierarchy": hierarchy}
     except Exception as e:
         logger.error(f"Error fetching department hierarchy: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-@app.get("/api/v1/departments/activities")
-async def get_department_activities(department_ids: str = None, limit: int = 100):
-    """Get all activities (notifications and audit logs) for given departments"""
-    try:
-        if not department_ids:
-            return {"activities": []}
-        
-        # Parse comma-separated department IDs
-        dept_ids = [d.strip() for d in department_ids.split(',') if d.strip()]
-        if not dept_ids:
-            return {"activities": []}
-        
-        activities = db_service.get_department_activities(dept_ids, limit)
-        return {"activities": activities}
-    except Exception as e:
-        logger.error(f"Error fetching department activities: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/api/v1/departments/{department_id}/sub-departments")
