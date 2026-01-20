@@ -693,8 +693,8 @@ deploy_to_aca() {
                 --ingress external \
                 --cpu 0.5 \
                 --memory 1Gi \
-                --min-replicas 0 \
-                --max-replicas 10 \
+                --min-replicas 1 \
+                --max-replicas 2 \
                 --registry-server "$ACR_NAME.azurecr.io" \
                 --registry-username "$ACR_NAME" \
                 --registry-password "$acr_password"; then
@@ -884,7 +884,7 @@ deploy_to_aca() {
                 --cpu 0.5 \
                 --memory 1Gi \
                 --min-replicas 0 \
-                --max-replicas 10 \
+                --max-replicas 2 \
                 --registry-server "$ACR_NAME.azurecr.io" \
                 --registry-username "$ACR_NAME" \
                 --registry-password "$acr_password"; then
