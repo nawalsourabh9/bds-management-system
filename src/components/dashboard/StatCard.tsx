@@ -1,4 +1,3 @@
-
 import { LucideIcon, TrendingUp, TrendingDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,99 +15,76 @@ interface StatCardProps {
   variant?: "default" | "success" | "warning" | "danger" | "primary";
 }
 
-export function StatCard({ 
+export function StatCard({
   title,
-  value, 
+  value,
   description,
   icon: Icon,
   trend,
-  variant = "default"
+  variant = "default",
 }: StatCardProps) {
-  const variantClassMap = {
-    default: "bg-gradient-to-br from-white to-gray-50/50 border-gray-200/50 hover:border-gray-300/50",
-    success: "bg-gradient-to-br from-green-50 to-green-100/50 border-green-200/50 hover:border-green-300/50",
-    warning: "bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-200/50 hover:border-amber-300/50",
-    danger: "bg-gradient-to-br from-red-50 to-red-100/50 border-red-200/50 hover:border-red-300/50",
-    primary: "bg-gradient-to-br from-orange-50 to-orange-100/50 border-orange-200/50 hover:border-orange-300/50"
-  };
-  
-  const iconClassMap = {
-    default: "text-blue-600 bg-gradient-to-br from-blue-100 to-blue-200/50",
-    success: "text-green-600 bg-gradient-to-br from-green-100 to-green-200/50",
-    warning: "text-amber-600 bg-gradient-to-br from-amber-100 to-amber-200/50",
-    danger: "text-red-600 bg-gradient-to-br from-red-100 to-red-200/50",
-    primary: "text-orange-600 bg-gradient-to-br from-orange-100 to-orange-200/50"
+  const iconWrap = {
+    default: "bg-muted text-foreground",
+    success: "bg-emerald-500/10 text-success",
+    warning: "bg-amber-500/10 text-warning",
+    danger: "bg-destructive/10 text-destructive",
+    primary: "bg-primary/10 text-primary",
   };
 
   return (
     <motion.div
-      whileHover={{ 
-        scale: 1.02,
+      whileHover={{
         y: -2,
-        transition: { duration: 0.2 }
+        transition: { duration: 0.3, ease: [0.4, 0, 0.2, 1] },
       }}
-      whileTap={{ scale: 0.98 }}
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
+      transition={{ duration: 0.45, ease: [0.4, 0, 0.2, 1] }}
     >
-      <Card className={cn(
-        "border shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer group",
-        variantClassMap[variant]
-      )}>
-        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-          <CardTitle className="text-sm font-medium text-gray-700 group-hover:text-gray-900 transition-colors">
+      <Card
+        className={cn(
+          "stat-card-visual vms-interactive border-border shadow-sm hover:shadow-md",
+          "group cursor-pointer"
+        )}
+      >
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-vms-sm font-medium text-muted-foreground transition-colors group-hover:text-foreground">
             {title}
           </CardTitle>
-          <motion.div 
-            className={cn("p-3 rounded-xl transition-all duration-300 group-hover:scale-110", iconClassMap[variant])}
-            whileHover={{ rotate: 5 }}
+          <div
+            className={cn(
+              "flex h-10 w-10 items-center justify-center rounded-vms-lg vms-interactive",
+              iconWrap[variant]
+            )}
           >
             <Icon className="h-5 w-5" />
-          </motion.div>
+          </div>
         </CardHeader>
-        <CardContent>
-          <motion.div 
-            className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent"
-            initial={{ scale: 0.8 }}
-            animate={{ scale: 1 }}
-            transition={{ delay: 0.2, duration: 0.3 }}
-          >
+        <CardContent className="pt-0">
+          <p className="text-vms-3xl font-semibold tracking-tight text-foreground">
             {value}
-          </motion.div>
+          </p>
           {(description || trend) && (
-            <div className="flex items-center text-xs text-muted-foreground mt-2">
+            <div className="mt-2 flex items-center text-vms-xs text-muted-foreground">
               {trend && (
-                <motion.div
-                  className="flex items-center gap-1 mr-2"
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.4 }}
-                >
+                <span className="mr-2 flex items-center gap-1 font-medium">
                   {trend.positive ? (
-                    <TrendingUp className="h-3 w-3 text-green-600" />
+                    <TrendingUp className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
                   ) : (
-                    <TrendingDown className="h-3 w-3 text-red-600" />
+                    <TrendingDown className="h-3.5 w-3.5 text-destructive" />
                   )}
-                  <span 
+                  <span
                     className={cn(
-                      "font-medium",
-                      trend.positive ? "text-green-600" : "text-red-600"
+                      trend.positive
+                        ? "text-emerald-700 dark:text-emerald-400"
+                        : "text-destructive"
                     )}
                   >
                     {Math.abs(trend.value)}%
                   </span>
-                </motion.div>
+                </span>
               )}
-              {description && (
-                <motion.span
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.5 }}
-                >
-                  {description}
-                </motion.span>
-              )}
+              {description && <span>{description}</span>}
             </div>
           )}
         </CardContent>

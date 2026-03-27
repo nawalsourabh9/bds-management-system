@@ -1,6 +1,5 @@
 
 import React, { useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableHeader,
@@ -132,27 +131,28 @@ const TasksTable: React.FC<TasksTableProps> = ({
 
   return (
     <>
-      <Card>
-        <CardContent className="p-0">
-          <div className="rounded-md border overflow-x-auto">
-            <Table className="w-full">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="border-r min-w-[200px]">Task</TableHead>
-                  <TableHead className="border-r min-w-[120px]">Assignee</TableHead>
-                  <TableHead className="border-r min-w-[100px]">Department</TableHead>
-                  <TableHead className="border-r min-w-[120px] hidden lg:table-cell">Reports To</TableHead>
-                  <TableHead className="border-r min-w-[100px]">Due Date</TableHead>
-                  <TableHead className="border-r min-w-[80px]">Priority</TableHead>
-                  <TableHead className="border-r min-w-[120px]">Status</TableHead>
-                  <TableHead className="border-r min-w-[150px] hidden md:table-cell">Documents</TableHead>
-                  <TableHead className="sticky right-0 bg-background z-10 min-w-[120px] border-l-2 border-l-border">Actions</TableHead>
+      <div className="overflow-hidden rounded-vms-xl border border-border bg-card shadow-sm">
+        <div className="overflow-x-auto">
+          <Table variant="clean" className="min-w-[720px]">
+              <TableHeader className="[&_tr]:border-b-0">
+                <TableRow className="border-0 hover:bg-transparent">
+                  <TableHead className="min-w-[200px] border-0">Task</TableHead>
+                  <TableHead className="min-w-[120px] border-0">Assignee</TableHead>
+                  <TableHead className="min-w-[100px] border-0">Department</TableHead>
+                  <TableHead className="hidden min-w-[120px] border-0 lg:table-cell">Reports To</TableHead>
+                  <TableHead className="min-w-[100px] border-0">Due Date</TableHead>
+                  <TableHead className="min-w-[80px] border-0">Priority</TableHead>
+                  <TableHead className="min-w-[120px] border-0">Status</TableHead>
+                  <TableHead className="hidden min-w-[150px] border-0 md:table-cell">Documents</TableHead>
+                  <TableHead className="sticky right-0 z-10 min-w-[120px] border-0 bg-card pl-4 shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.08)] dark:shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.4)]">
+                    Actions
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {tasks.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={9} className="text-center text-muted-foreground">
+                  <TableRow className="border-0 hover:bg-transparent">
+                    <TableCell colSpan={9} className="border-0 text-center text-muted-foreground">
                       No tasks found
                     </TableCell>
                   </TableRow>
@@ -206,9 +206,8 @@ const TasksTable: React.FC<TasksTableProps> = ({
                 )}
               </TableBody>
             </Table>
-          </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       <DocumentViewerDialog 
         viewingDocument={viewingDocument}

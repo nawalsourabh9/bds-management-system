@@ -20,6 +20,7 @@ import { TemplateTaskEditDialog } from "../TemplateTaskEditDialog";
 import TaskDelegation from "../TaskDelegation";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 interface TaskTableRowProps {
   task: Task;
@@ -136,9 +137,13 @@ const TaskTableRow: React.FC<TaskTableRowProps> = ({
 
   return (
     <>
-    <TableRow 
+    <TableRow
       id={rowId}
-      className={`${getBackgroundColor()} ${isHighlighted ? 'ring-2 ring-primary ring-offset-2 bg-primary/5' : ''}`}
+      className={cn(
+        "border-0 vms-interactive hover:bg-muted/30",
+        getBackgroundColor(),
+        isHighlighted && "bg-primary/5 ring-2 ring-primary ring-offset-2"
+      )}
     >
       <TableCell className="font-medium min-w-[250px]">
         <div className="flex flex-col gap-2">
@@ -398,7 +403,7 @@ const TaskTableRow: React.FC<TaskTableRowProps> = ({
           )}
         </div>
       </TableCell>
-      <TableCell className="sticky right-0 bg-background z-10 min-w-[140px] border-l-2 border-l-border">
+      <TableCell className="sticky right-0 z-10 min-w-[140px] border-0 bg-card pl-4 shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.08)] dark:shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.4)]">
         <div className="flex items-center justify-end gap-2">
           {/* View/Update Status Button */}
           <Button

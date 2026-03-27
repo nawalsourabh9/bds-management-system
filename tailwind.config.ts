@@ -19,6 +19,21 @@ export default {
 			}
 		},
 		extend: {
+			fontFamily: {
+				sans: [
+					'Poppins',
+					'ui-sans-serif',
+					'system-ui',
+					'sans-serif',
+				],
+			},
+			fontSize: {
+				'vms-xs': ['12px', { lineHeight: '1.5' }],
+				'vms-sm': ['14px', { lineHeight: '1.5' }],
+				'vms-base': ['16px', { lineHeight: '1.5' }],
+				'vms-xl': ['24px', { lineHeight: '1.35' }],
+				'vms-3xl': ['36px', { lineHeight: '1.25' }],
+			},
 			colors: {
 				border: 'hsl(var(--border))',
 				input: 'hsl(var(--input))',
@@ -53,6 +68,14 @@ export default {
 					DEFAULT: 'hsl(var(--card))',
 					foreground: 'hsl(var(--card-foreground))'
 				},
+				success: {
+					DEFAULT: 'hsl(var(--success))',
+					foreground: 'hsl(var(--success-foreground))'
+				},
+				warning: {
+					DEFAULT: 'hsl(var(--warning))',
+					foreground: 'hsl(var(--warning-foreground))'
+				},
 				sidebar: {
 					DEFAULT: 'hsl(var(--sidebar-background))',
 					foreground: 'hsl(var(--sidebar-foreground))',
@@ -80,7 +103,9 @@ export default {
 			borderRadius: {
 				lg: 'var(--radius)',
 				md: 'calc(var(--radius) - 2px)',
-				sm: 'calc(var(--radius) - 4px)'
+				sm: 'calc(var(--radius) - 4px)',
+				'vms-lg': '24px',
+				'vms-xl': '32px',
 			},
 			keyframes: {
 				'accordion-down': {
@@ -102,12 +127,22 @@ export default {
 				'caret-blink': {
 					'0%, 70%, 100%': { opacity: '1' },
 					'20%, 50%': { opacity: '0' },
-				}
+				},
+				'vms-fade-in-up': {
+					from: { opacity: '0', transform: 'translateY(12px)' },
+					to: { opacity: '1', transform: 'translateY(0)' },
+				},
+				'vms-pulse-dot': {
+					'0%, 100%': { opacity: '1' },
+					'50%': { opacity: '0.45' },
+				},
 			},
 			animation: {
 				'accordion-down': 'accordion-down 0.2s ease-out',
 				'accordion-up': 'accordion-up 0.2s ease-out',
-				'caret-blink': 'caret-blink 1.25s ease-out infinite'
+				'caret-blink': 'caret-blink 1.25s ease-out infinite',
+				'vms-fade-in-up': 'vms-fade-in-up 0.45s cubic-bezier(0.4, 0, 0.2, 1) both',
+				'vms-pulse': 'vms-pulse-dot 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite',
 			}
 		}
 	},

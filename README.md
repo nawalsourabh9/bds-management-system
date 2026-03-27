@@ -76,10 +76,27 @@ BDS Management System/
 ## 🔧 Access Information
 
 ### Local Development
-- **Frontend**: http://localhost:5173
-- **Backend API**: http://localhost:3001
+- **Frontend**: http://localhost:5173 (or the port Vite prints, e.g. 3001)
+- **Backend API**: http://localhost:8002 (matches `docker-compose.yml` port mapping and frontend default in `src/config/api.ts`)
 - **PostgreSQL**: localhost:5432
 - **PgAdmin**: http://localhost:8080
+
+#### Backend locally against Azure PostgreSQL (Key Vault)
+
+The same database secrets used in production are stored in Azure Key Vault (`db-host`, `db-user`, `db-password`, `db-name`), as referenced in [`scripts/deploy-all.sh`](scripts/deploy-all.sh) (`KEYVAULT_NAME` defaults to `bds-qms-kv`).
+
+1. `az login` with an account that can read those secrets.
+2. In Azure Portal, add your current public IP to the **PostgreSQL firewall** (or allow Azure services if you use a tunnel).
+3. Use **Python 3.12** (recommended; see `backend/.python-version`) or **3.13** with current `requirements.txt` (includes `asyncpg` / `psycopg2-binary` versions that ship wheels for 3.13). With Miniconda’s default **3.13**, older pins failed to compile—re-run `pip install -r requirements.txt` after pulling. Install deps: `cd backend && pip install -r requirements.txt` (venv at `backend/.venv` or `backend/venv` is auto-activated by the script).
+4. From the repo root:
+
+```bash
+./scripts/run-backend-local-azure.sh
+```
+
+This exports `DB_*` with `DB_SSLMODE=require`, unsets `DATABASE_URL`, and runs `uvicorn` on **http://127.0.0.1:8002** (override with `--port` / `--host`, or `KEYVAULT_NAME=...` for a different vault).
+
+Keep the frontend pointed at that API (default `VITE_API_BASE_URL` in [`.env.example`](.env.example) is `http://localhost:8002`).
 
 ### Test Users (Password: admin123)
 - **SuperAdmin**: `admin@bdsmanufacturing.in`

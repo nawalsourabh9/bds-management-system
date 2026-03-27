@@ -1,6 +1,7 @@
 
 import { useState } from "react";
-import { Bell, Search, LogOut, Settings, HelpCircle, UserRound, UserPlus, RefreshCw } from "lucide-react";
+import { useTheme } from "next-themes";
+import { Bell, Search, LogOut, Settings, HelpCircle, UserRound, RefreshCw, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +24,7 @@ import {
 
 export function Header() {
   const [searchQuery, setSearchQuery] = useState("");
+  const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
   const { unreadCount, fetchNotifications } = useNotifications();
   const { signOut, user } = useAuth();
@@ -80,25 +82,40 @@ export function Header() {
   
   return (
     <header className="sticky top-0 z-30 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="excel-toolbar flex h-16 items-center justify-between px-4">
-        <div className="flex items-center gap-2">
-          <SidebarTrigger />
-          <h2 className="text-2xl font-medium text-orange-600 hidden md:block">BDS Manufacturing</h2>
+      <div className="flex h-20 items-center justify-between gap-3 px-4 md:px-6">
+        <div className="flex min-w-0 items-center gap-2">
+          <SidebarTrigger className="vms-interactive" />
+          <h2 className="hidden truncate text-vms-xl font-semibold text-foreground md:block">
+            BDS Manufacturing
+          </h2>
         </div>
 
         <div className="flex items-center gap-3">
           <div className="hidden md:block">
             <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 type="search"
+                variant="vms"
                 placeholder="Search..."
-                className="w-[300px] pl-8 md:w-[400px] lg:w-[500px] rounded-sm bg-white border-border focus-visible:ring-primary"
+                className="w-[300px] pl-11 md:w-[400px] lg:w-[500px]"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="vms-interactive relative shrink-0 border-border"
+            title={theme === "dark" ? "Light mode" : "Dark mode"}
+            aria-label="Toggle color theme"
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          >
+            <Sun className="h-4 w-4 dark:hidden" />
+            <Moon className="hidden h-4 w-4 dark:inline" />
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="icon" className="relative border-border hover:bg-accent">
@@ -137,10 +154,10 @@ export function Header() {
           
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="relative h-8 w-8 rounded-full hover:bg-accent">
-                <Avatar className="h-8 w-8">
+              <Button variant="ghost" className="relative h-10 w-10 rounded-full p-0 hover:bg-accent">
+                <Avatar variant="vms" className="h-10 w-10">
                   <AvatarImage src="" alt="User" />
-                  <AvatarFallback className="bg-primary text-white">{getInitials()}</AvatarFallback>
+                  <AvatarFallback>{getInitials()}</AvatarFallback>
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>

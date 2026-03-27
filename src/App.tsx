@@ -1,4 +1,4 @@
-
+import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -11,17 +11,19 @@ const queryClient = new QueryClient();
 
 const App = () => {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <TooltipProvider>
-          <NotificationsProvider>
-            <Toaster />
-            <Sonner />
-            <AppRoutes />
-          </NotificationsProvider>
-        </TooltipProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <TooltipProvider>
+            <NotificationsProvider>
+              <Toaster />
+              <Sonner />
+              <AppRoutes />
+            </NotificationsProvider>
+          </TooltipProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 };
 
