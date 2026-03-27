@@ -256,8 +256,8 @@ export class BrowserNotificationManager {
 
     try {
       const notification = new Notification(title, {
-        icon: '/lovable-uploads/favicon_white.jpeg',
-        badge: '/lovable-uploads/favicon_white.jpeg',
+        icon: '/lovable-uploads/favicon-image.png',
+        badge: '/lovable-uploads/favicon-image.png',
         ...options
       });
 

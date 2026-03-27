@@ -185,7 +185,7 @@ export function AppSidebar() {
         <div className="px-3 py-4 mt-auto">
           <div className="flex justify-start items-start">
             <img
-              src="/lovable-uploads/horizontal-title.png"
+              src="/lovable-uploads/horizontal_final.png"
               alt="Nordic Design E-QMS"
               className="h-8 w-auto object-contain"
             />
